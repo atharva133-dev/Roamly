@@ -26,11 +26,11 @@ export function SiteNav() {
         </SignedOut>
         <SignedIn>
           <nav className="hidden items-center gap-6 text-sm font-medium md:flex">
-          {/* These links were already using the Link component */}
-          <Link className="hover:text-primary transition-colors" href="/llm">AI Travel Planner</Link>
-          <Link className="hover:text-primary transition-colors" href="/mapcalendar">My Schedule</Link>
-          <Link className="hover:text-primary transition-colors" href="/community">View Community</Link>
-        </nav>
+            {/* These links were already using the Link component */}
+            <Link className="hover:text-primary transition-colors" href="/llm">AI Travel Planner</Link>
+            <Link className="hover:text-primary transition-colors" href="/mapcalendar">My Schedule</Link>
+            <Link className="hover:text-primary transition-colors" href="/community">View Community</Link>
+          </nav>
         </SignedIn>
         <div className="flex items-center justify-end">
           <SignedOut>

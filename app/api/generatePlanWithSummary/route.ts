@@ -25,7 +25,7 @@ interface TravelPlan {
   };
 }
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY!;
+const GEMINI_API_KEY = (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY)!;
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 const PROMPT_TEMPLATE = `
@@ -111,11 +111,34 @@ export async function POST(req: Request) {
       .replace("{transportation}", transportation)
       .replace("{special_requests}", special_requests || "None");
 
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const preferredModel = process.env.GEMINI_MODEL;
+    const candidateModels = preferredModel
+      ? [preferredModel, "gemini-3.5-flash", "gemini-3.7-flash", "gemini-3.8-flash", "gemini-3.5-flash-lite"]
+      : ["gemini-3.5-flash", "gemini-3.7-flash", "gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.6-flash"];
 
-    const result = await model.generateContent({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-    });
+    let result: any = null;
+    let lastError: any = null;
+
+    for (const modelName of candidateModels) {
+      try {
+        console.log(`🤖 Generating itinerary with Gemini model: ${modelName}`);
+        const model = genAI.getGenerativeModel({ model: modelName });
+        result = await model.generateContent({
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+        });
+        if (result) {
+          console.log(`✅ Itinerary generation succeeded with model: ${modelName}`);
+          break;
+        }
+      } catch (err: any) {
+        console.warn(`⚠️ Model ${modelName} encountered an issue (${err.message || err.statusText}). Trying next model...`);
+        lastError = err;
+      }
+    }
+
+    if (!result) {
+      throw lastError || new Error("All Gemini models failed to generate content");
+    }
 
     let text =
       result.response.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";

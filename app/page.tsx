@@ -4,7 +4,7 @@ import Image from "next/image"
 import { Highlighter } from "@/components/magicui/highlighter";
 import { Globe } from "@/components/magicui/globe";
 import Link from "next/link"
-import { Smartphone,Earth, IndianRupee, Shield, Sparkles, Check, ArrowRight, Phone, LucideIcon } from "lucide-react"
+import { Smartphone, Earth, IndianRupee, Shield, Sparkles, Check, ArrowRight, Phone, LucideIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -156,10 +156,10 @@ const BigPictureSection: FC = () => {
           <h3 className="text-pretty text-2xl font-semibold sm:text-3xl">
             {inView ? (
               <Highlighter action="highlight" color="#8E9C78" animationDuration={1500}>
-              GlobeTrotter
-            </Highlighter>
-            ): ("GlobeTrotter")}
-             transforms your travel ideas into clear, vibrant visuals, giving you a beautiful overview of your next adventure.</h3>
+                GlobeTrotter
+              </Highlighter>
+            ) : ("GlobeTrotter")}{" "}
+            transforms your travel ideas into clear, vibrant visuals, giving you a beautiful overview of your next adventure.</h3>
           <ul className="mt-2 space-y-3">
             {bullets.map((b, i) => (
               <li key={i} className="flex items-start gap-3">
