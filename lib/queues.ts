@@ -1,24 +1,10 @@
 import { Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
 import { config } from 'dotenv';
+import redis from './redis';
 
 // Load environment variables
 config();
-
-// Create a separate Redis connection for BullMQ (with required settings)
-const queueRedis = new Redis({
-  host: process.env.REDIS_HOST || 'redis-13510.c8.us-east-1-3.ec2.redns.redis-cloud.com',
-  port: parseInt(process.env.REDIS_PORT || '13510'),
-  password: process.env.REDIS_PASSWORD,
-  username: process.env.REDIS_USERNAME || 'default',
-  maxRetriesPerRequest: null, // Required by BullMQ
-  lazyConnect: false,
-  enableOfflineQueue: true,
-  connectTimeout: 10000,
-});
-
-// Import the main Redis connection for caching
-import redis from './redis';
 
 interface TravelDetails {
   destinations: string[];
@@ -30,153 +16,19 @@ interface TravelDetails {
   accommodation: string;
   transportation: string;
   special_requests: string;
+  requestKey?: string;
+  inputHash?: string;
 }
 
-// Main queue for processing travel plan jobs
-export const travelPlanQueue = new Queue('travel-plan-queue', {
-  connection: queueRedis,
-  defaultJobOptions: {
-    removeOnComplete: 100,
-    removeOnFail: 50,
-  },
-});
+const isRedisDisabled = process.env.REDIS_ENABLED === 'false' || !process.env.REDIS_HOST || process.env.REDIS_HOST === 'none';
 
-// Dead letter queue 1 for first retry
-export const dlq1 = new Queue('travel-plan-dlq1', {
-  connection: queueRedis,
-  defaultJobOptions: {
-    removeOnComplete: 100,
-    removeOnFail: 50,
-    delay: 5000, // 5 second delay before retry
-  },
-});
-
-// Dead letter queue 2 for second retry
-export const dlq2 = new Queue('travel-plan-dlq2', {
-  connection: queueRedis,
-  defaultJobOptions: {
-    removeOnComplete: 100,
-    removeOnFail: 50,
-    delay: 10000, // 10 second delay before final retry
-  },
-});
-
-// Worker for processing jobs from the main queue
-export const worker = new Worker('travel-plan-queue', async (job) => {
-  console.log(`Processing job ${job.id} with data:`, job.data);
-  
-  try {
-    // Generate travel plan using actual LLM
-    const travelPlan = await generateTravelPlan(job.data);
-    
-    // Store result in Redis cache
-    await redis.set(`result:${job.id}`, JSON.stringify(travelPlan), 'EX', 3600); // 1 hour expiry
-    
-    return travelPlan;
-  } catch (error) {
-    console.error(`Error processing job ${job.id}:`, error);
-    throw error;
-  }
-}, {
-  connection: queueRedis,
-  concurrency: 2,
-});
-
-// Worker for processing jobs from DLQ1 (first retry)
-export const dlq1Worker = new Worker('travel-plan-dlq1', async (job) => {
-  console.log(`Retrying job ${job.id} from DLQ1 with data:`, job.data);
-  
-  // Simulate LLM processing with a delay
-  await new Promise(resolve => setTimeout(resolve, 2000));
-  
-  // Generate travel plan (placeholder for actual LLM logic)
-  const travelPlan = generateTravelPlan(job.data);
-  
-  // Store result in Redis cache with inputHash for future cache hits
-  const resultWithHash = {
-    ...travelPlan,
-    inputHash: job.data.inputHash,
-    requestKey: job.data.requestKey
-  };
-  await redis.set(`result:${job.id}`, JSON.stringify(resultWithHash), 'EX', 3600); // 1 hour expiry
-  
-  return travelPlan;
-}, {
-  connection: queueRedis,
-  concurrency: 1,
-});
-
-// Worker for processing jobs from DLQ2 (final retry)
-export const dlq2Worker = new Worker('travel-plan-dlq2', async (job) => {
-  console.log(`Final retry for job ${job.id} from DLQ2 with data:`, job.data);
-  
-  // Simulate LLM processing with a delay
-  await new Promise(resolve => setTimeout(resolve, 2000));
-  
-  // Generate travel plan (placeholder for actual LLM logic)
-  const travelPlan = generateTravelPlan(job.data);
-  
-  // Store result in Redis cache with inputHash for future cache hits
-  const resultWithHash = {
-    ...travelPlan,
-    inputHash: job.data.inputHash,
-    requestKey: job.data.requestKey
-  };
-  await redis.set(`result:${job.id}`, JSON.stringify(resultWithHash), 'EX', 3600); // 1 hour expiry
-  
-  return travelPlan;
-}, {
-  connection: queueRedis,
-  concurrency: 1,
-});
-
-// Handle job failures and move to appropriate DLQ
-worker.on('failed', async (job, err) => {
-  if (!job) return;
-  
-  console.log(`Job ${job.id} failed:`, err.message);
-  
-  if (job.attemptsMade < 1) {
-    // Move to DLQ1 for first retry
-    await dlq1.add(`retry-${job.id}`, job.data, {
-      jobId: job.id,
-      attempts: 1,
-    });
-  } else if (job.attemptsMade < 2) {
-    // Move to DLQ2 for second retry
-    await dlq2.add(`retry-${job.id}`, job.data, {
-      jobId: job.id,
-      attempts: 2,
-    });
-  } else {
-    // Final failure - log and discard
-    console.log(`Job ${job.id} failed permanently after ${job.attemptsMade} attempts`);
-  }
-});
-
-dlq1Worker.on('failed', async (job, err) => {
-  if (!job) return;
-  
-  console.log(`DLQ1 job ${job.id} failed:`, err.message);
-  
-  if (job.attemptsMade < 2) {
-    // Move to DLQ2 for final retry
-    await dlq2.add(`retry-${job.id}`, job.data, {
-      jobId: job.id,
-      attempts: 2,
-    });
-  } else {
-    // Final failure - log and discard
-    console.log(`DLQ1 job ${job.id} failed permanently after ${job.attemptsMade} attempts`);
-  }
-});
-
-dlq2Worker.on('failed', async (job, err) => {
-  if (!job) return;
-  
-  console.log(`DLQ2 job ${job.id} failed permanently:`, err.message);
-  // Job has failed all retries - log and discard
-});
+let travelPlanQueue: any;
+let dlq1: any;
+let dlq2: any;
+let worker: any;
+let dlq1Worker: any;
+let dlq2Worker: any;
+let queueRedis: any;
 
 // Actual LLM function for generating travel plan
 async function generateTravelPlan(data: TravelDetails) {
@@ -202,7 +54,7 @@ async function generateTravelPlan(data: TravelDetails) {
     const result = await response.json();
     return result.plan;
   } catch (error) {
-    console.error('Error calling LLM API:', error);
+    console.error('Error calling LLM API (using structured fallback):', error);
     
     // Fallback to structured data if LLM fails
     const itinerary = [];
@@ -248,19 +100,82 @@ async function generateTravelPlan(data: TravelDetails) {
   }
 }
 
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-  await worker.close();
-  await dlq1Worker.close();
-  await dlq2Worker.close();
-  await queueRedis.quit();
-  await redis.quit();
-});
+if (isRedisDisabled) {
+  // In-Memory Queue Fallback
+  const dummyWorker = {
+    close: async () => {},
+    on: () => dummyWorker,
+  };
 
-process.on('SIGINT', async () => {
-  await worker.close();
-  await dlq1Worker.close();
-  await dlq2Worker.close();
-  await queueRedis.quit();
-  await redis.quit();
-});
+  travelPlanQueue = {
+    add: async (name: string, data: any, opts: any) => {
+      const jobId = opts?.jobId || data?.requestKey || 'job-' + Date.now();
+      console.log(`[In-Memory Queue] Processing job ${jobId} without Redis...`);
+      setTimeout(async () => {
+        try {
+          const travelPlan = await generateTravelPlan(data);
+          await redis.set(`result:${jobId}`, JSON.stringify(travelPlan), 'EX', 3600);
+        } catch (err) {
+          console.error('[In-Memory Queue] Execution error:', err);
+        }
+      }, 500);
+      return { id: jobId };
+    }
+  };
+
+  dlq1 = { add: async () => ({ id: 'dlq1-' + Date.now() }) };
+  dlq2 = { add: async () => ({ id: 'dlq2-' + Date.now() }) };
+  worker = dummyWorker;
+  dlq1Worker = dummyWorker;
+  dlq2Worker = dummyWorker;
+  queueRedis = { quit: async () => {} };
+} else {
+  // Real BullMQ Queue Connection
+  queueRedis = new Redis({
+    host: process.env.REDIS_HOST,
+    port: parseInt(process.env.REDIS_PORT || '6379'),
+    password: process.env.REDIS_PASSWORD || undefined,
+    username: process.env.REDIS_USERNAME || 'default',
+    maxRetriesPerRequest: null,
+    lazyConnect: true,
+    enableOfflineQueue: false,
+    connectTimeout: 5000,
+    retryStrategy: () => null,
+  });
+
+  travelPlanQueue = new Queue('travel-plan-queue', {
+    connection: queueRedis,
+    defaultJobOptions: { removeOnComplete: 100, removeOnFail: 50 },
+  });
+
+  dlq1 = new Queue('travel-plan-dlq1', {
+    connection: queueRedis,
+    defaultJobOptions: { removeOnComplete: 100, removeOnFail: 50, delay: 5000 },
+  });
+
+  dlq2 = new Queue('travel-plan-dlq2', {
+    connection: queueRedis,
+    defaultJobOptions: { removeOnComplete: 100, removeOnFail: 50, delay: 10000 },
+  });
+
+  worker = new Worker('travel-plan-queue', async (job) => {
+    console.log(`Processing job ${job.id} with data:`, job.data);
+    const travelPlan = await generateTravelPlan(job.data);
+    await redis.set(`result:${job.id}`, JSON.stringify(travelPlan), 'EX', 3600);
+    return travelPlan;
+  }, { connection: queueRedis, concurrency: 2 });
+
+  dlq1Worker = new Worker('travel-plan-dlq1', async (job) => {
+    const travelPlan = await generateTravelPlan(job.data);
+    await redis.set(`result:${job.id}`, JSON.stringify(travelPlan), 'EX', 3600);
+    return travelPlan;
+  }, { connection: queueRedis, concurrency: 1 });
+
+  dlq2Worker = new Worker('travel-plan-dlq2', async (job) => {
+    const travelPlan = await generateTravelPlan(job.data);
+    await redis.set(`result:${job.id}`, JSON.stringify(travelPlan), 'EX', 3600);
+    return travelPlan;
+  }, { connection: queueRedis, concurrency: 1 });
+}
+
+export { travelPlanQueue, dlq1, dlq2, worker, dlq1Worker, dlq2Worker };

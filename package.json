@@ -8,8 +8,10 @@
     "start": "next start",
     "lint": "next lint",
     "workers": "tsx scripts/start-workers.ts",
+    "start-workers": "tsx scripts/start-workers.ts",
     "test:redis": "tsx scripts/test-redis.ts",
-    "setup:redis": "tsx scripts/setup-redis.ts"
+    "setup:redis": "tsx scripts/setup-redis.ts",
+    "setup-redis": "tsx scripts/setup-redis.ts"
   },
   "dependencies": {
     "@clerk/clerk-sdk-node": "^4.13.23",
