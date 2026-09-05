@@ -7,6 +7,7 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  serverExternalPackages: ["@prisma/client", "bullmq", "ioredis"],
 };
 
 export default nextConfig;
