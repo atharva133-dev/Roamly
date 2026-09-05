@@ -13,7 +13,7 @@ export function SiteNav() {
         {/* Replaced <a> tag with Link for the homepage navigation */}
         <Link href="/" className="flex items-center gap-2 text-lg font-semibold">
           <span className="inline-flex size-7 items-center justify-center rounded-md border"><Sparkles className="size-4" /></span>
-          <span>GlobeTrotter</span>
+          <span>Roamly</span>
         </Link>
         <SignedOut>
           <nav className="hidden items-center gap-6 text-sm font-medium md:flex">

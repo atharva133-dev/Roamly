@@ -1,4 +1,4 @@
-<div align="center"> <h1>GlobeTrotter</h1> <p>Your intelligent companion for seamless, AI-driven travel itinerary generation and discovery.</p> </div>
+<div align="center"> <h1>Roamly</h1> <p>Your intelligent companion for seamless, AI-driven travel itinerary generation and discovery.</p> </div>
 
 <hr>
 

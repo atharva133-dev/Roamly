@@ -96,7 +96,7 @@ export async function POST(req: Request) {
       Math.ceil(
         (new Date(end_date).getTime() -
           new Date(start_date).getTime()) /
-          (1000 * 60 * 60 * 24)
+        (1000 * 60 * 60 * 24)
       ) + 1;
 
     const prompt = PROMPT_TEMPLATE
@@ -153,7 +153,7 @@ export async function POST(req: Request) {
       let fixed = text;
       fixed = fixed.replace(/,(\s*[}\]])/g, "$1");
       fixed = fixed.replace(/`/g, "").trim();
-      
+
       try {
         travelPlan = JSON.parse(fixed);
       } catch {
@@ -161,45 +161,45 @@ export async function POST(req: Request) {
       }
     }
 
-    
+
     const convertToRupees = (costString: string): string => {
       if (!costString) return "₹0";
-      
-      
+
+
       const cleanCost = costString.replace(/[₹$€£¥₽₩₪₨₦₡₢₣₤₥₦₧₨₩₪₫₭₮₯₰₱₲₳₴₵₶₷₸₹₺₻₼₽₾₿]/g, '').trim();
-      
+
 
       const cost = parseFloat(cleanCost.replace(/,/g, ''));
       if (isNaN(cost)) return "₹0"; // Return ₹0 if not a number
-      
-      
+
+
       if (costString.includes('$')) {
         const rupees = Math.round(cost * 85);
         return `₹${rupees}`;
       }
-      
-      
+
+
       if (costString.includes('€')) {
         const rupees = Math.round(cost * 92);
         return `₹${rupees}`;
       }
-      
-      
+
+
       if (costString.includes('£')) {
         const rupees = Math.round(cost * 108);
         return `₹${rupees}`;
       }
-      
-      
+
+
       if (!costString.includes('₹')) {
         return `₹${cost}`;
       }
-      
-      
+
+
       return costString.includes('₹') ? costString : `₹${cost}`;
     };
 
-  
+
     if (travelPlan.itinerary) {
       travelPlan.itinerary.forEach((day: ItineraryDay) => {
         if (day.estimated_cost) {
@@ -207,7 +207,7 @@ export async function POST(req: Request) {
         }
       });
     }
-    
+
     if (travelPlan.total_estimated_cost) {
       travelPlan.total_estimated_cost = convertToRupees(travelPlan.total_estimated_cost);
     }

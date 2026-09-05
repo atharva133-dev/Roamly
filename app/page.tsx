@@ -3,6 +3,7 @@
 import Image from "next/image"
 import { Highlighter } from "@/components/magicui/highlighter";
 import { Globe } from "@/components/magicui/globe";
+import { GlobeErrorBoundary } from "@/components/magicui/globe-error-boundary";
 import Link from "next/link"
 import { Smartphone, Earth, IndianRupee, Shield, Sparkles, Check, ArrowRight, Phone, LucideIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -70,7 +71,9 @@ const HeroSection: FC = () => {
           <div className="mx-auto w-full max-w-4xl overflow-hidden rounded-[18px] border-[6px] border-black/70 shadow-2xl">
             <div className="relative aspect-[16/9] w-full">
               <div className="absolute inset-0 grid place-items-center">
-                <Globe />
+                <GlobeErrorBoundary>
+                  <Globe />
+                </GlobeErrorBoundary>
               </div>
             </div>
           </div>
@@ -106,13 +109,13 @@ const BenefitsSection: FC = () => {
           <h2 className="text-pretty text-3xl font-semibold sm:text-4xl">
             {inView ? (
               <Highlighter action="box" animationDuration={1500} color="#8E9C78">
-                Travel Anywhere with GlobeTrotter
+                Travel Anywhere with Roamly
               </Highlighter>
             ) : (
-              "Travel Anywhere with GlobeTrotter"
+              "Travel Anywhere with Roamly"
             )}
           </h2>
-          <p className="text-muted-foreground mt-3">GlobeTrotter provides real travel insights, without the data overload.</p>
+          <p className="text-muted-foreground mt-3">Roamly provides real travel insights, without the data overload.</p>
         </div>
 
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
@@ -147,8 +150,12 @@ const BigPictureSection: FC = () => {
     <section className="border-b" ref={ref}>
       <div className="mx-auto grid max-w-6xl items-center gap-10 px-4 py-14 sm:px-6 md:grid-cols-2">
         <div className="relative order-last md:order-first">
-          <div className="aspect-video w-full overflow-hidden rounded-xl border shadow-sm">
-            <div className="grid h-full w-full place-items-center bg-gradient-to-tr from-muted to-transparent" />
+          <div className="aspect-video w-full overflow-hidden rounded-2xl border border-muted bg-[#DFECC6]/15 shadow-sm transition-all duration-300 hover:shadow-lg hover:border-primary/40 hover:scale-[1.01]">
+            <img
+              src="/roamly-3d-map.png"
+              alt="Roamly 3D Travel Map"
+              className="h-full w-full object-cover"
+            />
           </div>
         </div>
         <div className="flex flex-col gap-4">
@@ -156,9 +163,9 @@ const BigPictureSection: FC = () => {
           <h3 className="text-pretty text-2xl font-semibold sm:text-3xl">
             {inView ? (
               <Highlighter action="highlight" color="#8E9C78" animationDuration={1500}>
-                GlobeTrotter
+                Roamly
               </Highlighter>
-            ) : ("GlobeTrotter")}{" "}
+            ) : ("Roamly")}{" "}
             transforms your travel ideas into clear, vibrant visuals, giving you a beautiful overview of your next adventure.</h3>
           <ul className="mt-2 space-y-3">
             {bullets.map((b, i) => (
@@ -181,7 +188,7 @@ interface ColumnProps {
 }
 
 const SpecsSection: FC = () => {
-  const GlobeTrotter: string[] = [
+  const Roamly: string[] = [
     "Quick trip planning",
     "Smart travel suggestions",
     "Expense prediction",
@@ -231,12 +238,12 @@ const SpecsSection: FC = () => {
       <div className="mx-auto max-w-6xl px-4 py-14 sm:px-6">
         <div className="mx-auto mb-10 max-w-2xl text-center">
           <Badge variant="secondary" className="mb-3">Specs</Badge>
-          <h2 className="text-pretty text-3xl font-semibold sm:text-4xl">Why Choose GlobeTrotter?</h2>
-          <p className="text-muted-foreground mt-3">You need a solution that keeps up. That’s why we developed GlobeTrotter. A traveller-friendly approach to get the most out of your trips.</p>
+          <h2 className="text-pretty text-3xl font-semibold sm:text-4xl">Why Choose Roamly?</h2>
+          <p className="text-muted-foreground mt-3">You need a solution that keeps up. That’s why we developed Roamly. A traveller-friendly approach to get the most out of your trips.</p>
         </div>
 
         <div className="grid gap-6 md:grid-cols-3">
-          <Column title="GlobeTrotter" lines={GlobeTrotter} />
+          <Column title="Roamly" lines={Roamly} />
           <Column title="WebSurge" lines={websurge} />
           <Column title="HyperView" lines={hyperview} />
         </div>
@@ -246,6 +253,7 @@ const SpecsSection: FC = () => {
 }
 
 const TestimonialSection: FC = () => {
+  const team = ["Mayuri", "Aryan", "Roger", "Mujahid", "Atharva"];
   return (
     <section className="border-b">
       <div className="mx-auto max-w-5xl px-4 py-14 sm:px-6">
@@ -253,24 +261,17 @@ const TestimonialSection: FC = () => {
           <div className="absolute inset-0 -z-10 grid place-items-center">
             <div className="size-48 rounded-full bg-muted blur-3xl" />
           </div>
-          <div className="grid gap-8 p-8 sm:p-12 md:grid-cols-[1.2fr_1fr] md:items-center">
-            <div className="space-y-5">
-              <p className="text-pretty text-xl font-medium sm:text-2xl">“I was skeptical, but GlobeTrotter has completely transformed the way I plan my vacations. The visual itineraries are so clear and intuitive, and the platform is so easy to use. I can&apos;t imagine planning a trip without it.”</p>
-              <div>
-                <p className="font-semibold">Prayash Pratim Baruah</p>
-                <p className="text-muted-foreground text-sm">Intern at IIT Guwahati</p>
-              </div>
-            </div>
-            <div className="grid place-items-center">
-              <div className="aspect-square w-60 rounded-full border bg-gradient-to-br from-muted to-transparent">
-                <Image
-                  src="/ChatGPT Image Aug 12, 2025, 05_30_32 AM.png" // path inside public folder
-                  alt="Prayash Pratim Baruah"
-                  width={240}
-                  height={240}
-                  className="object-cover rounded-full"
-                />
-              </div>
+          <div className="flex flex-col items-center gap-6 p-8 sm:p-12 text-center">
+            <p className="text-muted-foreground text-sm uppercase tracking-widest font-medium">Made with ✈️ by</p>
+            <div className="flex flex-wrap justify-center gap-3">
+              {team.map((name) => (
+                <span
+                  key={name}
+                  className="rounded-full border bg-muted px-5 py-2 text-base font-semibold"
+                >
+                  {name}
+                </span>
+              ))}
             </div>
           </div>
         </div>
@@ -286,7 +287,7 @@ const SiteFooter: FC = () => {
       <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-10 sm:px-6 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-2">
           <span className="inline-flex size-7 items-center justify-center rounded-md border"><Sparkles className="size-4" /></span>
-          <span className="font-semibold">GlobeTrotter</span>
+          <span className="font-semibold">Roamly</span>
         </div>
         <nav className="flex flex-wrap items-center gap-5 text-sm text-muted-foreground">
           <a href="#benefits" className="hover:underline">Benefits</a>

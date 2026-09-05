@@ -29,88 +29,12 @@ type Review = {
   };
 };
 
-// Synthetic data for now
-const syntheticReviews: Review[] = [
-  {
-    review_id: 1,
-    user_id: 10,
-    trip_id: 15,
-    stars: 2,
-    description: "Not satisfied with the trip to Stockholm, Oslo, Copenhagen. Many promised activities were either cancelled or not as described. Frustrating experience.",
-    created_at: "2025-06-15",
-    user: {
-      email: "conscious.chimpanzee@email.com",
-      profile_photo_url: "/profile-avatar.jpg"
-    },
-    trip: {
-      description: "Nordic Adventure",
-      city: {
-        city: "Stockholm",
-        country: "Sweden"
-      }
-    }
-  },
-  {
-    review_id: 2,
-    user_id: 2,
-    trip_id: 10,
-    stars: 5,
-    description: "Absolutely incredible trip! Sydney, Melbourne, and the Great Barrier Reef were beyond expectations. The local guides were knowledgeable and friendly. Highly recommend!",
-    created_at: "2025-01-20",
-    user: {
-      email: "alert.kangaroo@email.com",
-      profile_photo_url: "/profile-avatar.jpg"
-    },
-    trip: {
-      description: "Australian Adventure",
-      city: {
-        city: "Sydney",
-        country: "Australia"
-      }
-    }
-  },
-  {
-    review_id: 3,
-    user_id: 5,
-    trip_id: 8,
-    stars: 4,
-    description: "Great experience in Japan! The cherry blossoms were beautiful and the food was amazing. Only downside was the crowded tourist spots.",
-    created_at: "2025-03-10",
-    user: {
-      email: "thoughtful.crocodile@email.com",
-      profile_photo_url: "/profile-avatar.jpg"
-    },
-    trip: {
-      description: "Cherry Blossom Tour",
-      city: {
-        city: "Tokyo",
-        country: "Japan"
-      }
-    }
-  },
-  {
-    review_id: 4,
-    user_id: 7,
-    trip_id: 12,
-    stars: 3,
-    description: "Decent trip to Paris. The Eiffel Tower was impressive but the weather wasn&apos;t great. Food was good though.",
-    created_at: "2025-02-28",
-    user: {
-      email: "charmi@email.com",
-      profile_photo_url: "/profile-avatar.jpg"
-    },
-    trip: {
-      description: "Paris Getaway",
-      city: {
-        city: "Paris",
-        country: "France"
-      }
-    }
-  }
-];
+// No pre-seeded reviews
+const syntheticReviews: Review[] = [];
 
 export default function CommunityPage() {
-  const [reviews, setReviews] = useState<Review[]>(syntheticReviews);
+  const [reviews, setReviews] = useState<Review[]>([]);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFilter, setSelectedFilter] = useState<string>("all");
   const [sortBy, setSortBy] = useState<string>("newest");

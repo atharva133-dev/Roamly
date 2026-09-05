@@ -62,7 +62,7 @@ export default function TravelPlanner() {
 
   return (
     <div style={{ padding: 20 }}>
-      <h1>GlobeTrotter Travel Planner</h1>
+      <h1>Roamly Travel Planner</h1>
 
       <input name="destination" placeholder="Destination" onChange={handleChange} />
       <input name="duration" placeholder="Duration in days" type="number" onChange={handleChange} />

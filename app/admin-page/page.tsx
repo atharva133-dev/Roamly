@@ -151,7 +151,7 @@ export default function AdminDashboard() {
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <div>
-            <h1 className="text-3xl font-bold" style={{ color: '#000000' }}>GlobalTrotter</h1>
+            <h1 className="text-3xl font-bold" style={{ color: '#000000' }}>Roamly</h1>
             <p style={{ color: '#929292' }}>Admin Panel</p>
           </div>
         </div>

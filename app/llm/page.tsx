@@ -19,15 +19,15 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { 
-  Plane, 
-  Calendar, 
-  MapPin, 
-  DollarSign, 
-  Hotel, 
-  Car, 
-  Heart, 
-  Lightbulb, 
+import {
+  Plane,
+  Calendar,
+  MapPin,
+  IndianRupee,
+  Hotel,
+  Car,
+  Heart,
+  Lightbulb,
   Loader2,
   CheckCircle,
   AlertCircle,
@@ -89,7 +89,7 @@ export default function LLMPage() {
   const [jobStatus, setJobStatus] = useState<'idle' | 'queued' | 'processing' | 'completed' | 'failed'>('idle');
 
 
-  
+
   const [citiesText, setCitiesText] = useState("Delhi, Agra");
   const [startDate, setStartDate] = useState(() => {
     const tomorrow = new Date();
@@ -113,7 +113,7 @@ export default function LLMPage() {
     setError("");
     setPlan(null);
     setSummary("");
-    
+
 
 
     try {
@@ -147,16 +147,16 @@ export default function LLMPage() {
       console.log('🚀 Starting travel plan generation...');
       setJobStatus('queued');
       console.log('📋 Job queued - waiting in line...');
-      
+
       // Simulate "queued" status for 1 second
       await new Promise(resolve => setTimeout(resolve, 1000));
       setJobStatus('processing');
       console.log('⚙️  Job processing - generating your travel plan...');
-      
+
       // Simulate "processing" status for 2 seconds
       await new Promise(resolve => setTimeout(resolve, 2000));
       console.log('🤖 Calling LLM API...');
-      
+
       // Make the actual API call
       const res = await fetch("/api/generatePlanWithSummary", {
         method: "POST",
@@ -171,16 +171,16 @@ export default function LLMPage() {
 
       const data: ApiResponse = await res.json();
       console.log('✅ LLM response received successfully!');
-      
+
       // Simulate "processing" for a bit more to show the experience
       await new Promise(resolve => setTimeout(resolve, 1000));
       console.log('🎉 Travel plan completed!');
-      
+
       setPlan(data.plan);
       setSummary(data.summary);
       setJobStatus('completed');
       setLoading(false);
-      
+
     } catch (err: unknown) {
       console.error('❌ Error generating travel plan:', err);
       setError(err instanceof Error ? err.message : "Unknown error");
@@ -352,7 +352,7 @@ export default function LLMPage() {
               />
             </div>
 
-            
+
 
             {/* Terminal Output */}
             {jobStatus !== 'idle' && (
@@ -402,8 +402,8 @@ export default function LLMPage() {
             )}
 
             {/* Generate Button */}
-            <Button 
-              onClick={generatePlan} 
+            <Button
+              onClick={generatePlan}
               disabled={loading}
               className="w-full"
             >
@@ -423,12 +423,11 @@ export default function LLMPage() {
             {/* Job Status Indicator */}
             {jobStatus !== 'idle' && (
               <div className="mt-3 flex items-center space-x-2">
-                <div className={`h-2 w-2 rounded-full ${
-                  jobStatus === 'queued' ? 'bg-yellow-500' :
+                <div className={`h-2 w-2 rounded-full ${jobStatus === 'queued' ? 'bg-yellow-500' :
                   jobStatus === 'processing' ? 'bg-blue-500' :
-                  jobStatus === 'completed' ? 'bg-green-500' :
-                  jobStatus === 'failed' ? 'bg-red-500' : 'bg-gray-500'
-                }`} />
+                    jobStatus === 'completed' ? 'bg-green-500' :
+                      jobStatus === 'failed' ? 'bg-red-500' : 'bg-gray-500'
+                  }`} />
                 <span className="text-sm text-gray-600">
                   {jobStatus === 'queued' && 'Job queued, waiting to start...'}
                   {jobStatus === 'processing' && 'Processing your travel plan...'}
@@ -437,15 +436,14 @@ export default function LLMPage() {
                 </span>
               </div>
             )}
-            
+
             {/* Job Status with Progress */}
             {jobStatus !== 'idle' && (
-              <div className={`p-4 rounded-md ${
-                jobStatus === 'completed' ? 'bg-green-50 border border-green-200' :
+              <div className={`p-4 rounded-md ${jobStatus === 'completed' ? 'bg-green-50 border border-green-200' :
                 jobStatus === 'failed' ? 'bg-red-50 border border-red-200' :
-                jobStatus === 'queued' ? 'bg-blue-50 border border-blue-200' :
-                'bg-yellow-50 border border-yellow-200'
-              }`}>
+                  jobStatus === 'queued' ? 'bg-blue-50 border border-blue-200' :
+                    'bg-yellow-50 border border-yellow-200'
+                }`}>
                 <div className="flex items-center gap-3 mb-3">
                   {jobStatus === 'completed' ? (
                     <CheckCircle className="h-5 w-5 text-green-500" />
@@ -457,39 +455,36 @@ export default function LLMPage() {
                     <Loader2 className="h-5 w-5 text-yellow-500 animate-spin" />
                   )}
                   <div className="flex-1">
-                    <p className={`font-medium ${
-                      jobStatus === 'completed' ? 'text-green-700' :
+                    <p className={`font-medium ${jobStatus === 'completed' ? 'text-green-700' :
                       jobStatus === 'failed' ? 'text-red-700' :
-                      jobStatus === 'queued' ? 'text-blue-700' :
-                      'text-yellow-700'
-                    }`}>
+                        jobStatus === 'queued' ? 'text-blue-700' :
+                          'text-yellow-700'
+                      }`}>
                       {jobStatus === 'completed' ? 'Travel plan generated successfully!' :
-                       jobStatus === 'failed' ? 'Failed to generate travel plan' :
-                       jobStatus === 'queued' ? 'Job submitted to queue, processing...' :
-                       'Processing your request...'}
+                        jobStatus === 'failed' ? 'Failed to generate travel plan' :
+                          jobStatus === 'queued' ? 'Job submitted to queue, processing...' :
+                            'Processing your request...'}
                     </p>
-                    <p className={`text-xs ${
-                      jobStatus === 'completed' ? 'text-green-600' :
+                    <p className={`text-xs ${jobStatus === 'completed' ? 'text-green-600' :
                       jobStatus === 'failed' ? 'text-red-600' :
-                      jobStatus === 'queued' ? 'text-blue-600' :
-                      'text-yellow-600'
-                    }`}>
+                        jobStatus === 'queued' ? 'text-blue-600' :
+                          'text-yellow-600'
+                      }`}>
                       {jobStatus === 'completed' ? 'Your itinerary is ready below' :
-                       jobStatus === 'failed' ? 'Please try again or check your inputs' :
-                       jobStatus === 'queued' ? 'Waiting in queue...' :
-                       'Generating your personalized travel plan...'}
+                        jobStatus === 'failed' ? 'Please try again or check your inputs' :
+                          jobStatus === 'queued' ? 'Waiting in queue...' :
+                            'Generating your personalized travel plan...'}
                     </p>
                   </div>
                 </div>
-                
+
                 {/* Progress Bar */}
                 <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div className={`h-2 rounded-full transition-all duration-1000 ${
-                    jobStatus === 'completed' ? 'bg-green-500 w-full' :
+                  <div className={`h-2 rounded-full transition-all duration-1000 ${jobStatus === 'completed' ? 'bg-green-500 w-full' :
                     jobStatus === 'failed' ? 'bg-red-500 w-full' :
-                    jobStatus === 'queued' ? 'bg-blue-500 w-1/3' :
-                    'bg-yellow-500 w-2/3'
-                  }`}></div>
+                      jobStatus === 'queued' ? 'bg-blue-500 w-1/3' :
+                        'bg-yellow-500 w-2/3'
+                    }`}></div>
                 </div>
               </div>
             )}
@@ -518,12 +513,12 @@ export default function LLMPage() {
                 <p className="text-gray-700 mb-4">{summary}</p>
                 <div className="flex gap-2">
                   <Badge variant="secondary">
-                    <DollarSign className="h-3 w-3 mr-1" />
-                    {plan.total_estimated_cost}
+                    <IndianRupee className="h-3 w-3 mr-1" />
+                    {plan?.total_estimated_cost || "₹15,000"}
                   </Badge>
                   <Badge variant="outline">
                     <Clock className="h-3 w-3 mr-1" />
-                    {plan.itinerary.length} Days
+                    {plan?.itinerary?.length || 0} Days
                   </Badge>
                 </div>
               </CardContent>
@@ -536,7 +531,7 @@ export default function LLMPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-6">
-                  {plan.itinerary.map((day, idx) => (
+                  {(plan?.itinerary || []).map((day, idx) => (
                     <div key={idx} className="border-l-2 border-blue-200 pl-4">
                       <div className="mb-3">
                         <h3 className="font-semibold text-lg text-gray-900">{day.day}</h3>
@@ -545,7 +540,7 @@ export default function LLMPage() {
                           {day.city}
                         </Badge>
                       </div>
-                      
+
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
                         <div>
                           <p className="text-xs font-medium text-gray-500 uppercase">Morning</p>
@@ -560,7 +555,7 @@ export default function LLMPage() {
                           <p className="text-sm text-gray-700">{day.evening}</p>
                         </div>
                       </div>
-                      
+
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
                         <div>
                           <p className="text-xs font-medium text-gray-500 uppercase">Accommodation</p>
@@ -571,10 +566,10 @@ export default function LLMPage() {
                           <p className="text-sm text-gray-700">{day.meals}</p>
                         </div>
                       </div>
-                      
+
                       <div>
                         <Badge variant="secondary" className="text-xs">
-                          <DollarSign className="h-3 w-3 mr-1" />
+                          <IndianRupee className="h-3 w-3 mr-1" />
                           {day.estimated_cost}
                         </Badge>
                       </div>
@@ -593,7 +588,7 @@ export default function LLMPage() {
                 </CardHeader>
                 <CardContent>
                   <ul className="space-y-2">
-                    {plan.travel_tips.map((tip, idx) => (
+                    {(plan?.travel_tips || []).map((tip, idx) => (
                       <li key={idx} className="flex items-start gap-2 text-sm">
                         <span className="text-blue-600 mt-1">•</span>
                         <span className="text-gray-700">{tip}</span>
@@ -610,7 +605,7 @@ export default function LLMPage() {
                 </CardHeader>
                 <CardContent>
                   <ul className="space-y-2">
-                    {plan.packing_list.map((item, idx) => (
+                    {(plan?.packing_list || []).map((item, idx) => (
                       <li key={idx} className="flex items-start gap-2 text-sm">
                         <span className="text-blue-600 mt-1">•</span>
                         <span className="text-gray-700">{item}</span>
@@ -630,15 +625,15 @@ export default function LLMPage() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
                     <p className="text-xs font-medium text-gray-500 uppercase">Local Emergency</p>
-                    <p className="text-sm font-mono text-gray-700">{plan.emergency_contacts.local_emergency}</p>
+                    <p className="text-sm font-mono text-gray-700">{plan?.emergency_contacts?.local_emergency || "112 / 100"}</p>
                   </div>
                   <div>
                     <p className="text-xs font-medium text-gray-500 uppercase">Embassy</p>
-                    <p className="text-sm font-mono text-gray-700">{plan.emergency_contacts.embassy}</p>
+                    <p className="text-sm font-mono text-gray-700">{plan?.emergency_contacts?.embassy || "National Helpline 1363"}</p>
                   </div>
                   <div>
                     <p className="text-xs font-medium text-gray-500 uppercase">Hotel</p>
-                    <p className="text-sm font-mono text-gray-700">{plan.emergency_contacts.hotel}</p>
+                    <p className="text-sm font-mono text-gray-700">{plan?.emergency_contacts?.hotel || "Hotel Concierge Desk"}</p>
                   </div>
                 </div>
               </CardContent>

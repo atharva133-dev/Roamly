@@ -1,4 +1,4 @@
-# Redis + BullMQ Queuing System for GlobeTrotter
+# Redis + BullMQ Queuing System for Roamly
 
 This document explains how to set up and use the new queuing system that replaces the direct API calls with a job-based approach.
 
