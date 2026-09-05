@@ -117,7 +117,7 @@ export async function POST(req: Request) {
       : ["gemini-3.5-flash", "gemini-3.7-flash", "gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.6-flash"];
 
     let result: any = null;
-    let lastError: any = null;
+    let lastError: unknown = null;
 
     for (const modelName of candidateModels) {
       try {
@@ -130,8 +130,9 @@ export async function POST(req: Request) {
           console.log(`✅ Itinerary generation succeeded with model: ${modelName}`);
           break;
         }
-      } catch (err: any) {
-        console.warn(`⚠️ Model ${modelName} encountered an issue (${err.message || err.statusText}). Trying next model...`);
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        console.warn(`⚠️ Model ${modelName} encountered an issue (${errorMsg}). Trying next model...`);
         lastError = err;
       }
     }
@@ -141,26 +142,21 @@ export async function POST(req: Request) {
     }
 
     let text =
-      result.response.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
+      result?.response?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
 
     text = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
 
     let travelPlan: TravelPlan;
     try {
       travelPlan = JSON.parse(text);
-    } catch (parseError) {
-      
+    } catch {
       let fixed = text;
-      
-      
       fixed = fixed.replace(/,(\s*[}\]])/g, "$1");
-      
-      
       fixed = fixed.replace(/`/g, "").trim();
       
       try {
         travelPlan = JSON.parse(fixed);
-      } catch (secondError) {
+      } catch {
         throw new Error(`Failed to parse AI response as JSON: ${text.substring(0, 100)}...`);
       }
     }
