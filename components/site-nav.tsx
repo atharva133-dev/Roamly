@@ -1,5 +1,6 @@
 "use client"
-import { SignedIn, SignedOut, UserButton } from "@clerk/nextjs"
+
+import { SignedIn, SignedOut, UserButton, useUser } from "@clerk/nextjs"
 import { Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useClerk } from "@clerk/nextjs"
@@ -7,9 +8,12 @@ import Link from "next/link"
 
 export function SiteNav() {
   const { openSignIn } = useClerk()
+  const { user } = useUser()
+  const username = user?.firstName || user?.username || user?.fullName || "Traveler"
+
   return (
     <header className="sticky top-0 z-30 border-b border-[#e5e7db]/80 bg-background/70 backdrop-blur-xl supports-[backdrop-filter]:bg-background/50">
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
+      <div className="w-full max-w-7xl mx-auto flex h-16 items-center justify-between px-4 sm:px-8 lg:px-10">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2.5 text-lg font-bold group">
           <span className="inline-flex size-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#485C11] to-[#6B7F3A] shadow-sm group-hover:shadow-md transition-shadow duration-300">
@@ -48,7 +52,12 @@ export function SiteNav() {
             </Button>
           </SignedOut>
           <SignedIn>
-            <UserButton></UserButton>
+            <div className="flex items-center gap-3">
+              <UserButton />
+              <span className="text-sm font-medium text-foreground">
+                Hello, <span className="font-semibold text-[#485C11]">{username}</span>
+              </span>
+            </div>
           </SignedIn>
         </div>
       </div>

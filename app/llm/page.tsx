@@ -12,13 +12,10 @@ import {
   SelectItem,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { MultiSelectInterests } from "@/components/ui/multi-select-interests";
+import Link from "next/link";
 import {
   Plane,
   Calendar,
@@ -33,7 +30,13 @@ import {
   AlertCircle,
   Globe,
   Clock,
-  Star
+  Star,
+  Check,
+  X,
+  RotateCcw,
+  Edit3,
+  ArrowRight,
+  Sparkles
 } from "lucide-react";
 
 interface TravelDetails {
@@ -87,8 +90,7 @@ export default function LLMPage() {
   const [summary, setSummary] = useState("");
   const [error, setError] = useState("");
   const [jobStatus, setJobStatus] = useState<'idle' | 'queued' | 'processing' | 'completed' | 'failed'>('idle');
-
-
+  const [decisionStatus, setDecisionStatus] = useState<'pending' | 'accepted' | 'rejected'>('pending');
 
   const [citiesText, setCitiesText] = useState("Delhi, Agra");
   const [startDate, setStartDate] = useState(() => {
@@ -102,10 +104,14 @@ export default function LLMPage() {
     return format(nextWeek, "yyyy-MM-dd");
   });
   const [budget, setBudget] = useState("Mid-range");
-  const [travelStyle, setTravelStyle] = useState("Cultural");
   const [accommodation, setAccommodation] = useState("Hotel");
   const [transportation, setTransportation] = useState("Train");
-  const [interestsText, setInterestsText] = useState("Historical Sites, Food, Culture, Photography");
+  const [travelInterests, setTravelInterests] = useState<string[]>([
+    "Cultural & Heritage",
+    "Historical Sites",
+    "Food & Culinary",
+    "Photography & Scenic"
+  ]);
   const [specialRequests, setSpecialRequests] = useState("");
 
   const generatePlan = async () => {
@@ -113,6 +119,7 @@ export default function LLMPage() {
     setError("");
     setPlan(null);
     setSummary("");
+    setDecisionStatus("pending");
 
 
 
@@ -136,8 +143,8 @@ export default function LLMPage() {
         start_date: startDate,
         end_date: endDate,
         budget,
-        travel_style: travelStyle,
-        interests: interestsText.split(",").map((s) => s.trim()).filter(Boolean),
+        travel_style: travelInterests[0] || "Cultural",
+        interests: travelInterests,
         accommodation,
         transportation,
         special_requests: specialRequests || "None",
@@ -178,14 +185,52 @@ export default function LLMPage() {
 
       setPlan(data.plan);
       setSummary(data.summary);
-      setJobStatus('completed');
-      setLoading(false);
-
+      setDecisionStatus("pending");
     } catch (err: unknown) {
-      console.error('❌ Error generating travel plan:', err);
-      setError(err instanceof Error ? err.message : "Unknown error");
+      const errorMessage = err instanceof Error ? err.message : "Failed to generate travel plan";
+      setError(errorMessage);
       setJobStatus('failed');
+    } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAcceptPlan = () => {
+    if (!plan) return;
+    const acceptedData = {
+      plan,
+      summary,
+      destinations: citiesText.split(",").map((s) => s.trim()).filter(Boolean),
+      startDate,
+      endDate,
+      budget,
+      accommodation,
+      transportation,
+      interests: travelInterests,
+      acceptedAt: new Date().toISOString(),
+    };
+    try {
+      localStorage.setItem("roamly_accepted_plan", JSON.stringify(acceptedData));
+    } catch (e) {
+      console.error("Failed to save accepted plan to localStorage", e);
+    }
+    setDecisionStatus("accepted");
+  };
+
+  const handleRejectPlan = () => {
+    setDecisionStatus("rejected");
+  };
+
+  const handleRegenerate = () => {
+    setDecisionStatus("pending");
+    generatePlan();
+  };
+
+  const handleEditChanges = () => {
+    setDecisionStatus("pending");
+    const formElement = document.getElementById("travel-form-card");
+    if (formElement) {
+      formElement.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   };
 
@@ -204,7 +249,7 @@ export default function LLMPage() {
         </div>
 
         {/* Form */}
-        <Card className="mb-8">
+        <Card id="travel-form-card" className="mb-8 border-[#e5e7db] shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Plane className="h-6 w-6" />
@@ -251,25 +296,8 @@ export default function LLMPage() {
               </div>
             </div>
 
-            {/* Travel Style and Budget */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Travel Style
-                </label>
-                <Select value={travelStyle} onValueChange={setTravelStyle}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {travelStyleOptions.map((style) => (
-                      <SelectItem key={style} value={style}>
-                        {style}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            {/* Budget, Accommodation, and Transportation */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Budget
@@ -287,22 +315,6 @@ export default function LLMPage() {
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-
-            {/* Interests */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Interests
-              </label>
-              <Input
-                value={interestsText}
-                onChange={(e) => setInterestsText(e.target.value)}
-                placeholder="e.g., Historical Sites, Food, Culture, Photography"
-              />
-            </div>
-
-            {/* Accommodation and Transportation */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Accommodation
@@ -337,6 +349,23 @@ export default function LLMPage() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            {/* Travel Interests (Combined Multi-select Dropdown) */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  Travel Interests
+                </label>
+                <span className="text-xs text-muted-foreground">
+                  Select multiple styles & activities
+                </span>
+              </div>
+              <MultiSelectInterests
+                selected={travelInterests}
+                onChange={setTravelInterests}
+                placeholder="Choose or search travel interests..."
+              />
             </div>
 
             {/* Special Requests */}
@@ -501,6 +530,120 @@ export default function LLMPage() {
         {/* Plan Output */}
         {plan && (
           <div className="space-y-6">
+            {/* Itinerary Decision Card (Accept / Reject) */}
+            {decisionStatus === 'pending' && (
+              <Card className="border-2 border-[#8E9C78]/40 bg-gradient-to-r from-[#DFECC6]/30 via-white to-[#DFECC6]/30 shadow-md">
+                <CardContent className="p-6">
+                  <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="size-5 text-[#485C11]" />
+                        <h3 className="text-lg font-bold text-[#1a1a1a]">
+                          Review Your Generated Itinerary
+                        </h3>
+                      </div>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Would you like to accept this plan and add it directly to your schedule?
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-3 w-full md:w-auto">
+                      <Button
+                        onClick={handleAcceptPlan}
+                        className="flex-1 md:flex-none bg-[#485C11] hover:bg-[#3a4d0d] text-white rounded-full px-6 shadow-sm"
+                      >
+                        <Check className="mr-2 size-4" />
+                        Accept Itinerary
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={handleRejectPlan}
+                        className="flex-1 md:flex-none rounded-full px-6 border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+                      >
+                        <X className="mr-2 size-4" />
+                        Reject
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* If Accepted Banner */}
+            {decisionStatus === 'accepted' && (
+              <Card className="border-2 border-green-500/40 bg-green-50/50 shadow-md animate-in fade-in-0 duration-300">
+                <CardContent className="p-6">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div className="flex items-start gap-3">
+                      <div className="size-9 rounded-full bg-green-100 flex items-center justify-center shrink-0 mt-0.5">
+                        <CheckCircle className="size-5 text-green-700" />
+                      </div>
+                      <div>
+                        <h3 className="text-base font-bold text-green-900">
+                          Itinerary Accepted & Added to Schedule!
+                        </h3>
+                        <p className="text-xs sm:text-sm text-green-700 mt-0.5">
+                          This itinerary is now synced side-by-side with your calendar in the My Schedule menu.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2.5 w-full sm:w-auto">
+                      <Link href="/mapcalendar" className="w-full sm:w-auto">
+                        <Button className="w-full bg-[#485C11] hover:bg-[#3a4d0d] text-white rounded-full px-6 shadow-sm">
+                          <Calendar className="mr-2 size-4" />
+                          View in My Schedule
+                          <ArrowRight className="ml-2 size-4" />
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* If Rejected Banner */}
+            {decisionStatus === 'rejected' && (
+              <Card className="border-2 border-amber-400/50 bg-amber-50/60 shadow-md animate-in fade-in-0 duration-300">
+                <CardContent className="p-6">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div className="flex items-start gap-3">
+                      <div className="size-9 rounded-full bg-amber-100 flex items-center justify-center shrink-0 mt-0.5">
+                        <AlertCircle className="size-5 text-amber-700" />
+                      </div>
+                      <div>
+                        <h3 className="text-base font-bold text-amber-900">
+                          Itinerary Rejected
+                        </h3>
+                        <p className="text-xs sm:text-sm text-amber-800 mt-0.5">
+                          Would you like to regenerate a fresh plan with AI, or edit your travel preferences above?
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2.5 w-full sm:w-auto">
+                      <Button
+                        onClick={handleRegenerate}
+                        disabled={loading}
+                        className="flex-1 sm:flex-none bg-[#485C11] hover:bg-[#3a4d0d] text-white rounded-full px-5 text-xs sm:text-sm"
+                      >
+                        <RotateCcw className="mr-1.5 size-3.5" />
+                        Regenerate Plan
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={handleEditChanges}
+                        className="flex-1 sm:flex-none rounded-full px-5 border-amber-300 text-amber-900 hover:bg-amber-100/70 text-xs sm:text-sm"
+                      >
+                        <Edit3 className="mr-1.5 size-3.5" />
+                        Edit Preferences
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Summary */}
             <Card>
               <CardHeader>
