@@ -2,10 +2,10 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import {
-  ClerkProvider,
-} from '@clerk/nextjs'
+import { ClerkProvider } from '@clerk/nextjs'
 import { SiteNav } from "@/components/site-nav";
+import { PageLoadingTransition } from "@/components/loading-screen";
+import { Suspense } from "react";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -31,6 +31,9 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <ClerkProvider>
+          <Suspense fallback={null}>
+            <PageLoadingTransition />
+          </Suspense>
           <SiteNav />
           {children}
         </ClerkProvider>

@@ -45,91 +45,88 @@
 
 :root {
   --radius: 0.625rem;
-  /* Light theme based on provided palette */
-  --background: #FFFFFF; /* White */
-  --foreground: #000000; /* Black */
+  --background: #FAFBF8;
+  --foreground: #1a1a1a;
 
   --card: #FFFFFF;
-  --card-foreground: #000000;
+  --card-foreground: #1a1a1a;
 
   --popover: #FFFFFF;
-  --popover-foreground: #000000;
+  --popover-foreground: #1a1a1a;
 
-  --primary: #485C11; /* Deep Olive */
+  --primary: #485C11;
   --primary-foreground: #FFFFFF;
 
-  --secondary: #DFECC6; /* Light Mint */
-  --secondary-foreground: #000000; /* Black */
+  --secondary: #DFECC6;
+  --secondary-foreground: #1a1a1a;
 
-  --muted: #DFECC6; /* Light Mint as subtle backgrounds */
-  --muted-foreground: #929292; /* Gray */
+  --muted: #f0f4e8;
+  --muted-foreground: #6b7280;
 
-  --accent: #000000; /* Black */
-  --accent-foreground: #000000;
+  --accent: #f0f4e8;
+  --accent-foreground: #1a1a1a;
 
-  --destructive: #C0392B; /* fallback red for destructive */
-  --border: #929292; /* Gray */
-  --input: #929292; /* Gray */
-  --ring: #929292; /* Gray */
-
-  /* Optional brand tints for charts/sidebar */
-  --chart-1: #8E9C78; /* Olive Green */
-  --chart-2: #DFECC6; /* Light Mint */
-  --chart-3: #000000; /* Black */
-  --chart-4: #485C11; /* Deep Olive */
-  --chart-5: #929292; /* Gray */
-
-  --sidebar: #FFFFFF;
-  --sidebar-foreground: #000000;
-  --sidebar-primary: #485C11;
-  --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #DFECC6;
-  --sidebar-accent-foreground: #000000;
-  --sidebar-border: #929292;
-  --sidebar-ring: #929292;
-}
-
-.dark {
-  /* Dark theme inversion using palette */
-  --background: #000000; /* Black */
-  --foreground: #FFFFFF; /* White */
-
-  --card: #0A0A0A;
-  --card-foreground: #FFFFFF;
-
-  --popover: #0A0A0A;
-  --popover-foreground: #FFFFFF;
-
-  --primary: #8E9C78; /* Olive Green pops on dark */
-  --primary-foreground: #000000;
-
-  --secondary: #485C11; /* Deep Olive blocks */
-  --secondary-foreground: #FFFFFF;
-
-  --muted: #111111;
-  --muted-foreground: #DFECC6; /* Light Mint text for muted */
-
-  --accent: #000000; /* Black */
-  --accent-foreground: #000000;
-
-  --destructive: #E74C3C;
-  --border: #1F1F1F;
-  --input: #1F1F1F;
-  --ring: #8E9C78; /* Olive ring */
+  --destructive: #C0392B;
+  --border: #e5e7db;
+  --input: #e5e7db;
+  --ring: #8E9C78;
 
   --chart-1: #8E9C78;
   --chart-2: #DFECC6;
-  --chart-3: #000000;
+  --chart-3: #1a1a1a;
   --chart-4: #485C11;
-  --chart-5: #929292;
+  --chart-5: #6b7280;
 
-  --sidebar: #0A0A0A;
-  --sidebar-foreground: #FFFFFF;
+  --sidebar: #FFFFFF;
+  --sidebar-foreground: #1a1a1a;
+  --sidebar-primary: #485C11;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #DFECC6;
+  --sidebar-accent-foreground: #1a1a1a;
+  --sidebar-border: #e5e7db;
+  --sidebar-ring: #8E9C78;
+}
+
+.dark {
+  --background: #0a0a0a;
+  --foreground: #f5f5f5;
+
+  --card: #111111;
+  --card-foreground: #f5f5f5;
+
+  --popover: #111111;
+  --popover-foreground: #f5f5f5;
+
+  --primary: #8E9C78;
+  --primary-foreground: #0a0a0a;
+
+  --secondary: #1a2408;
+  --secondary-foreground: #f5f5f5;
+
+  --muted: #151515;
+  --muted-foreground: #a1a1a1;
+
+  --accent: #151515;
+  --accent-foreground: #f5f5f5;
+
+  --destructive: #E74C3C;
+  --border: #222222;
+  --input: #222222;
+  --ring: #8E9C78;
+
+  --chart-1: #8E9C78;
+  --chart-2: #DFECC6;
+  --chart-3: #0a0a0a;
+  --chart-4: #485C11;
+  --chart-5: #6b7280;
+
+  --sidebar: #111111;
+  --sidebar-foreground: #f5f5f5;
   --sidebar-primary: #8E9C78;
-  --sidebar-primary-foreground: #000000;
-  --sidebar-accent: #111111;
+  --sidebar-primary-foreground: #0a0a0a;
+  --sidebar-accent: #151515;
   --sidebar-accent-foreground: #DFECC6;
-  --sidebar-border: #1F1F1F;
+  --sidebar-border: #222222;
   --sidebar-ring: #8E9C78;
 }
 
@@ -140,4 +137,79 @@
   body {
     @apply bg-background text-foreground;
   }
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+/* === Custom Animations === */
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes twinkle {
+  0%, 100% { opacity: 0.2; }
+  50% { opacity: 0.8; }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.8s ease-out forwards;
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.8s ease-out forwards;
+}
+
+.animate-fade-in-up-delay {
+  opacity: 0;
+  animation: fade-in-up 0.8s ease-out 0.2s forwards;
+}
+
+.animate-fade-in-up-delay-2 {
+  opacity: 0;
+  animation: fade-in-up 0.8s ease-out 0.4s forwards;
+}
+
+.animate-twinkle {
+  animation: twinkle 2s ease-in-out infinite;
+}
+
+@keyframes travel-shimmer {
+  0% { transform: translateX(-150%); }
+  100% { transform: translateX(250%); }
+}
+
+@keyframes fly-across {
+  0% {
+    left: -120px;
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  92% {
+    opacity: 1;
+  }
+  100% {
+    left: calc(100vw + 60px);
+    opacity: 0;
+  }
+}
+
+/* Smooth section transitions */
+section {
+  position: relative;
 }

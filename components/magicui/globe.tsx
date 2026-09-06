@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 
 const MOVEMENT_DAMPING = 1400;
 
-// Cobe Marker Config
+// City markers with pulsing dots
 const MARKERS = [
   { location: [14.5995, 120.9842], size: 0.03 },
   { location: [19.076, 72.8777], size: 0.1 },
@@ -18,9 +18,13 @@ const MARKERS = [
   { location: [40.7128, -74.006], size: 0.1 },
   { location: [34.6937, 135.5022], size: 0.05 },
   { location: [41.0082, 28.9784], size: 0.06 },
+  { location: [48.8566, 2.3522], size: 0.08 },
+  { location: [51.5074, -0.1278], size: 0.08 },
+  { location: [-33.8688, 151.2093], size: 0.07 },
+  { location: [35.6762, 139.6503], size: 0.09 },
 ];
 
-// Continent Polygon Coordinates [lng, lat]
+// Continent polygons [lng, lat]
 const DETAILED_CONTINENTS: number[][][] = [
   // North America
   [[-168, 65], [-162, 70], [-150, 71], [-130, 70], [-115, 69], [-95, 68], [-80, 66], [-75, 62], [-64, 58], [-55, 52], [-60, 46], [-66, 44], [-70, 42], [-76, 35], [-81, 25], [-88, 30], [-97, 26], [-97, 20], [-105, 20], [-110, 23], [-115, 30], [-124, 40], [-124, 48], [-130, 54], [-140, 59], [-152, 60], [-160, 58], [-168, 65]],
@@ -56,18 +60,16 @@ const DETAILED_CONTINENTS: number[][][] = [
   [[166, -46], [174, -41], [178, -35], [175, -45], [166, -46]],
 ];
 
-// Subdivide polygon points along sphere geodesics for smooth curvature
+// Subdivide polygon edges for smooth sphere curvature
 function subdividePolygon(points: number[][], maxStep = 2.5): number[][] {
   const result: number[][] = [];
   for (let i = 0; i < points.length; i++) {
     const p1 = points[i];
     const p2 = points[(i + 1) % points.length];
     result.push(p1);
-
     const dx = p2[0] - p1[0];
     const dy = p2[1] - p1[1];
     const dist = Math.hypot(dx, dy);
-
     if (dist > maxStep) {
       const steps = Math.ceil(dist / maxStep);
       for (let s = 1; s < steps; s++) {
@@ -79,8 +81,8 @@ function subdividePolygon(points: number[][], maxStep = 2.5): number[][] {
   return result;
 }
 
-const SUBDIVIDED_LANDMASSES = DETAILED_CONTINENTS.map((poly) => subdividePolygon(poly, 2.0));
-const AXIAL_TILT = 0.35; // ~20 degree tilt
+const SUBDIVIDED_LANDMASSES = DETAILED_CONTINENTS.map((poly) => subdividePolygon(poly, 1.8));
+const AXIAL_TILT = 0.35;
 
 export function Globe({ className }: { className?: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -114,7 +116,6 @@ export function Globe({ className }: { className?: string }) {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
@@ -134,78 +135,107 @@ export function Globe({ className }: { className?: string }) {
       canvas.width = displayWidth * dpr;
       canvas.height = displayHeight * dpr;
       ctx.scale(dpr, dpr);
-
       ctx.clearRect(0, 0, displayWidth, displayHeight);
 
       const cx = displayWidth / 2;
       const cy = displayHeight / 2;
       const radius = Math.min(displayWidth, displayHeight) * 0.42;
 
-      // Soft bright backdrop aura to separate globe from background
-      const outerGlow = ctx.createRadialGradient(cx, cy, radius * 0.8, cx, cy, radius * 1.35);
-      outerGlow.addColorStop(0, "rgba(255, 255, 255, 0.95)");
-      outerGlow.addColorStop(0.5, "rgba(255, 255, 255, 0.6)");
-      outerGlow.addColorStop(1, "rgba(255, 255, 255, 0)");
+      // === ATMOSPHERIC GLOW ===
+      const atmo = ctx.createRadialGradient(cx, cy, radius * 0.92, cx, cy, radius * 1.35);
+      atmo.addColorStop(0, "rgba(100, 180, 255, 0.15)");
+      atmo.addColorStop(0.4, "rgba(80, 160, 240, 0.08)");
+      atmo.addColorStop(0.7, "rgba(60, 140, 220, 0.03)");
+      atmo.addColorStop(1, "rgba(60, 140, 220, 0)");
       ctx.beginPath();
       ctx.arc(cx, cy, radius * 1.35, 0, Math.PI * 2);
-      ctx.fillStyle = outerGlow;
+      ctx.fillStyle = atmo;
       ctx.fill();
 
-      // Base White 3D Sphere Gradient
-      const sphereGrad = ctx.createRadialGradient(
-        cx - radius * 0.35, cy - radius * 0.35, radius * 0.05,
-        cx, cy, radius
+      // === OCEAN BASE - Deep Blue Sphere ===
+      const oceanGrad = ctx.createRadialGradient(
+        cx - radius * 0.3, cy - radius * 0.3, radius * 0.05,
+        cx + radius * 0.1, cy + radius * 0.1, radius
       );
-      sphereGrad.addColorStop(0, "#FFFFFF");
-      sphereGrad.addColorStop(0.7, "#F8FAFC");
-      sphereGrad.addColorStop(1, "#E2E8F0");
+      oceanGrad.addColorStop(0, "#4FA8D6");
+      oceanGrad.addColorStop(0.3, "#3B8FC4");
+      oceanGrad.addColorStop(0.6, "#2D7AB5");
+      oceanGrad.addColorStop(0.85, "#1E5F8E");
+      oceanGrad.addColorStop(1, "#14405E");
 
       ctx.save();
       ctx.beginPath();
       ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-      ctx.fillStyle = sphereGrad;
-      ctx.shadowColor = "rgba(0, 0, 0, 0.25)";
-      ctx.shadowBlur = 36;
-      ctx.shadowOffsetY = 12;
+      ctx.fillStyle = oceanGrad;
+      ctx.shadowColor = "rgba(15, 50, 80, 0.4)";
+      ctx.shadowBlur = 50;
+      ctx.shadowOffsetY = 15;
       ctx.fill();
       ctx.restore();
 
-      // Clip content inside globe sphere boundary
+      // Clip to sphere
       ctx.save();
       ctx.beginPath();
       ctx.arc(cx, cy, radius, 0, Math.PI * 2);
       ctx.clip();
 
-      // Rotation & Drag offset
-      if (!pointerInteracting.current) {
-        phiRef.current += 0.005;
-      }
-      const currentPhi = phiRef.current + rs.get();
-
+      // === SUBTLE OCEAN TEXTURE (grid lines) ===
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.03)";
+      ctx.lineWidth = 0.5;
       const cosTheta = Math.cos(AXIAL_TILT);
       const sinTheta = Math.sin(AXIAL_TILT);
 
-      // Project 3D sphere coordinate
+      if (!pointerInteracting.current) {
+        phiRef.current += 0.004;
+      }
+      const currentPhi = phiRef.current + rs.get();
+
+      // 3D projection function
       const project = (lat: number, lng: number) => {
         const latR = (lat * Math.PI) / 180;
         const lngR = (lng * Math.PI) / 180 + currentPhi;
-
         const x0 = Math.cos(latR) * Math.sin(lngR);
         const y0 = -Math.sin(latR);
         const z0 = Math.cos(latR) * Math.cos(lngR);
-
         const x3d = x0 * cosTheta - y0 * sinTheta;
         const y3d = x0 * sinTheta + y0 * cosTheta;
         const z3d = z0;
-
-        return {
-          px: cx + x3d * radius,
-          py: cy + y3d * radius,
-          z3d,
-        };
+        return { px: cx + x3d * radius, py: cy + y3d * radius, z3d };
       };
 
-      // 1. DRAW HIGH-CONTRAST DARK CHARCOAL/SLATE CONTINENTS (#1E293B)
+      // Draw latitude lines
+      for (let lat = -60; lat <= 60; lat += 30) {
+        ctx.beginPath();
+        let started = false;
+        for (let lng = -180; lng <= 180; lng += 3) {
+          const { px, py, z3d } = project(lat, lng);
+          if (z3d > 0) {
+            if (!started) { ctx.moveTo(px, py); started = true; }
+            else ctx.lineTo(px, py);
+          } else {
+            started = false;
+          }
+        }
+        ctx.stroke();
+      }
+
+      // Draw longitude lines
+      for (let lng = -180; lng < 180; lng += 30) {
+        ctx.beginPath();
+        let started = false;
+        for (let lat = -90; lat <= 90; lat += 3) {
+          const { px, py, z3d } = project(lat, lng);
+          if (z3d > 0) {
+            if (!started) { ctx.moveTo(px, py); started = true; }
+            else ctx.lineTo(px, py);
+          } else {
+            started = false;
+          }
+        }
+        ctx.stroke();
+      }
+
+      // === CONTINENTS - Natural green/brown terrain ===
       SUBDIVIDED_LANDMASSES.forEach((polygon) => {
         const projectedPoints = polygon.map(([lng, lat]) => project(lat, lng));
         const visiblePoints = projectedPoints.filter((p) => p.z3d > -0.05);
@@ -216,66 +246,77 @@ export function Globe({ className }: { className?: string }) {
 
           projectedPoints.forEach((p) => {
             if (p.z3d > -0.08) {
-              if (!started) {
-                ctx.moveTo(p.px, p.py);
-                started = true;
-              } else {
-                ctx.lineTo(p.px, p.py);
-              }
+              if (!started) { ctx.moveTo(p.px, p.py); started = true; }
+              else ctx.lineTo(p.px, p.py);
             }
           });
 
           if (started) {
             ctx.closePath();
-            ctx.fillStyle = "rgba(30, 41, 59, 0.95)";
+
+            // Compute average z for depth-based shading
+            const avgZ = visiblePoints.reduce((sum, p) => sum + p.z3d, 0) / visiblePoints.length;
+            const brightness = 0.55 + avgZ * 0.45;
+
+            // Natural terrain colors
+            const r = Math.round(65 * brightness + 40);
+            const g = Math.round(110 * brightness + 50);
+            const b = Math.round(50 * brightness + 25);
+            ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.92)`;
             ctx.fill();
-            ctx.strokeStyle = "rgba(71, 85, 105, 0.7)";
-            ctx.lineWidth = 1.2;
+
+            // Subtle terrain border
+            ctx.strokeStyle = `rgba(${r - 20}, ${g - 15}, ${b - 10}, 0.4)`;
+            ctx.lineWidth = 0.8;
             ctx.stroke();
           }
         }
       });
 
-      // 2. DRAW GLOWING ORANGE CITY PINS
-      pulseAngle += 0.04;
-      const pulseScale = 1 + Math.sin(pulseAngle) * 0.22;
+      // === CITY MARKERS - Glowing warm dots ===
+      pulseAngle += 0.035;
+      const pulseScale = 1 + Math.sin(pulseAngle) * 0.2;
 
       MARKERS.forEach(({ location: [lat, lng] }) => {
         const { px, py, z3d } = project(lat, lng);
 
-        if (z3d > 0.05) {
-          const glowR = (8 + z3d * 6) * pulseScale;
+        if (z3d > 0.1) {
+          const alpha = Math.pow(z3d, 0.6);
+          const glowR = (7 + z3d * 5) * pulseScale;
 
+          // Outer glow
           const glow = ctx.createRadialGradient(px, py, 0, px, py, glowR);
-          glow.addColorStop(0, `rgba(255, 85, 20, ${0.95 * z3d})`);
-          glow.addColorStop(0.5, `rgba(255, 120, 45, ${0.45 * z3d})`);
-          glow.addColorStop(1, "rgba(255, 85, 20, 0)");
-
+          glow.addColorStop(0, `rgba(255, 200, 60, ${0.7 * alpha})`);
+          glow.addColorStop(0.4, `rgba(255, 160, 40, ${0.3 * alpha})`);
+          glow.addColorStop(1, "rgba(255, 160, 40, 0)");
           ctx.beginPath();
           ctx.arc(px, py, glowR, 0, Math.PI * 2);
           ctx.fillStyle = glow;
           ctx.fill();
 
+          // Core dot
           ctx.beginPath();
-          ctx.arc(px, py, 3.5 + z3d * 1.2, 0, Math.PI * 2);
-          ctx.fillStyle = `rgba(255, 75, 10, ${z3d})`;
+          ctx.arc(px, py, 2.5 + z3d * 1.0, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(255, 180, 50, ${alpha})`;
           ctx.fill();
 
+          // Bright center
           ctx.beginPath();
-          ctx.arc(px, py, 1.4 + z3d * 0.4, 0, Math.PI * 2);
-          ctx.fillStyle = `rgba(255, 255, 255, ${z3d})`;
+          ctx.arc(px, py, 1.2 + z3d * 0.3, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(255, 255, 220, ${alpha})`;
           ctx.fill();
         }
       });
 
-      ctx.restore(); // Restore clip
+      ctx.restore(); // unclip
 
-      // Specular Gloss Overlay
+      // === SPECULAR HIGHLIGHT - top-left shine ===
       const spec = ctx.createRadialGradient(
         cx - radius * 0.35, cy - radius * 0.4, 0,
-        cx - radius * 0.35, cy - radius * 0.4, radius * 0.65
+        cx - radius * 0.35, cy - radius * 0.4, radius * 0.7
       );
-      spec.addColorStop(0, "rgba(255, 255, 255, 0.5)");
+      spec.addColorStop(0, "rgba(255, 255, 255, 0.35)");
+      spec.addColorStop(0.5, "rgba(255, 255, 255, 0.08)");
       spec.addColorStop(1, "rgba(255, 255, 255, 0)");
       ctx.save();
       ctx.beginPath();
@@ -285,12 +326,11 @@ export function Globe({ className }: { className?: string }) {
       ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
       ctx.restore();
 
-      // Rim Shadow Overlay
-      const rimShadow = ctx.createRadialGradient(cx, cy, radius * 0.88, cx, cy, radius);
+      // === RIM SHADOW - atmospheric edge darkening ===
+      const rimShadow = ctx.createRadialGradient(cx, cy, radius * 0.82, cx, cy, radius);
       rimShadow.addColorStop(0, "rgba(0, 0, 0, 0)");
-      rimShadow.addColorStop(0.88, "rgba(15, 23, 42, 0.05)");
-      rimShadow.addColorStop(1, "rgba(15, 23, 42, 0.28)");
-
+      rimShadow.addColorStop(0.75, "rgba(10, 30, 60, 0.06)");
+      rimShadow.addColorStop(1, "rgba(10, 30, 60, 0.25)");
       ctx.beginPath();
       ctx.arc(cx, cy, radius, 0, Math.PI * 2);
       ctx.fillStyle = rimShadow;
@@ -303,7 +343,6 @@ export function Globe({ className }: { className?: string }) {
       draw();
       rafRef.current = requestAnimationFrame(loop);
     };
-
     loop();
 
     return () => cancelAnimationFrame(rafRef.current);
