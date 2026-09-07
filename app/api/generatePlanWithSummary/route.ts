@@ -113,27 +113,31 @@ export async function POST(req: Request) {
 
     let text = "";
 
-    // Route gpt-6-astra through Experiential Gateway if configured
+    // Route gpt-6-astra through Experiential Gateway if configured, otherwise fall back to Gemini
     const apiKey = process.env.EXPLABS_API_KEY;
-    if (!apiKey) {
-      throw new Error("EXPLABS_API_KEY environment variable is not set. Please create one under Settings -> API keys and export it.");
+
+    if (apiKey) {
+      try {
+        console.log("🤖 Generating itinerary with Experiential Gateway model: gpt-6-astra");
+        const { createChatCompletion } = await import("@/lib/experiential");
+        const completion = await createChatCompletion([
+          { role: "user", content: prompt }
+        ]);
+
+        text = completion.choices?.[0]?.message?.content?.trim() || "";
+        console.log("✅ Itinerary generation succeeded with Experiential gpt-6-astra");
+      } catch (expError: any) {
+        console.warn(`⚠️ Experiential gpt-6-astra encountered issue: ${expError.message}. Falling back to Gemini...`);
+      }
+    } else {
+      console.log("ℹ️ EXPLABS_API_KEY not set. Using Gemini directly.");
     }
 
-    try {
-      console.log("🤖 Generating itinerary with Experiential Gateway model: gpt-6-astra");
-      const { createChatCompletion } = await import("@/lib/experiential");
-      const completion = await createChatCompletion([
-        { role: "user", content: prompt }
-      ]);
-
-      text = completion.choices?.[0]?.message?.content?.trim() || "";
-      console.log("✅ Itinerary generation succeeded with Experiential gpt-6-astra");
-    } catch (expError: any) {
-      console.warn(`⚠️ Experiential gpt-6-astra encountered issue: ${expError.message}. Falling back to Gemini...`);
+    if (!text) {
       const preferredModel = process.env.GEMINI_MODEL;
       const candidateModels = preferredModel
-        ? [preferredModel, "gemini-3.5-flash", "gemini-3.7-flash", "gemini-3.8-flash", "gemini-3.5-flash-lite"]
-        : ["gemini-3.5-flash", "gemini-3.7-flash", "gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.6-flash"];
+        ? [preferredModel, "gemini-3.5-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
+        : ["gemini-3.5-flash", "gemini-1.5-flash", "gemini-1.5-pro"];
 
       let result: any = null;
       let lastError: unknown = null;
@@ -157,7 +161,7 @@ export async function POST(req: Request) {
       }
 
       if (!result && !text) {
-        throw expError || lastError || new Error("LLM generation failed");
+        throw lastError || new Error("LLM generation failed");
       }
 
       if (!text && result) {
