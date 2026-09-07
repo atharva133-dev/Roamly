@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "prisma generate && next build",
+    "build:win": "node node_modules/.bin/prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
     "workers": "tsx scripts/start-workers.ts",
