@@ -115,7 +115,7 @@ function slerpVec3(v1: [number, number, number], v2: [number, number, number], t
   return [s1 * v1[0] + s2 * v2[0], s1 * v1[1] + s2 * v2[1], s1 * v1[2] + s2 * v2[2]];
 }
 
-export function RotatingGlobe({ className }: { className?: string }) {
+export function RotatingGlobe({ className, speed = 0.0022 }: { className?: string; speed?: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -150,7 +150,6 @@ export function RotatingGlobe({ className }: { className?: string }) {
 
     let animFrameId: number;
     let time = 0;
-    const AUTO_SPEED = 0.0065; // Smooth continuous revolving speed
 
     const render = () => {
       time += 0.016;
@@ -163,9 +162,9 @@ export function RotatingGlobe({ className }: { className?: string }) {
 
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       // Ensure canvas buffer matches (belt-and-suspenders)
-      if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
-        canvas.width = w * dpr;
-        canvas.height = h * dpr;
+      if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+        canvas.width = Math.round(w * dpr);
+        canvas.height = Math.round(h * dpr);
       }
 
       ctx.save();
@@ -176,9 +175,8 @@ export function RotatingGlobe({ className }: { className?: string }) {
       const cy = h / 2;
       const radius = Math.min(w, h) * 0.44;
 
-      // ── ALWAYS rotate continuously
-      const isReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      phiRef.current += isReducedMotion ? 0 : AUTO_SPEED;
+      // ── Smooth continuous slow rotation (~48s per full 360° revolution)
+      phiRef.current += speed;
 
       if (!isDraggingRef.current) {
         velocityRef.current.x *= 0.93;
