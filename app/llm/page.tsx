@@ -92,26 +92,13 @@ export default function LLMPage() {
   const [jobStatus, setJobStatus] = useState<'idle' | 'queued' | 'processing' | 'completed' | 'failed'>('idle');
   const [decisionStatus, setDecisionStatus] = useState<'pending' | 'accepted' | 'rejected'>('pending');
 
-  const [citiesText, setCitiesText] = useState("Delhi, Agra");
-  const [startDate, setStartDate] = useState(() => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    return format(tomorrow, "yyyy-MM-dd");
-  });
-  const [endDate, setEndDate] = useState(() => {
-    const nextWeek = new Date();
-    nextWeek.setDate(nextWeek.getDate() + 8);
-    return format(nextWeek, "yyyy-MM-dd");
-  });
+  const [citiesText, setCitiesText] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [budget, setBudget] = useState("Mid-range");
   const [accommodation, setAccommodation] = useState("Hotel");
   const [transportation, setTransportation] = useState("Train");
-  const [travelInterests, setTravelInterests] = useState<string[]>([
-    "Cultural & Heritage",
-    "Historical Sites",
-    "Food & Culinary",
-    "Photography & Scenic"
-  ]);
+  const [travelInterests, setTravelInterests] = useState<string[]>([]);
   const [specialRequests, setSpecialRequests] = useState("");
 
   const generatePlan = async () => {
@@ -131,6 +118,10 @@ export default function LLMPage() {
 
       if (destinations.length === 0) {
         throw new Error("Please enter at least one destination");
+      }
+
+      if (!startDate || !endDate) {
+        throw new Error("Please select both start date and end date");
       }
 
       const days = differenceInDays(parseISO(endDate), parseISO(startDate)) + 1;
@@ -265,7 +256,7 @@ export default function LLMPage() {
               <Input
                 value={citiesText}
                 onChange={(e) => setCitiesText(e.target.value)}
-                placeholder="e.g., Delhi, Agra, Jaipur"
+                placeholder="Enter destination (e.g., Delhi, Agra)"
               />
               <p className="text-xs text-gray-500 mt-1">Enter cities separated by commas</p>
             </div>
