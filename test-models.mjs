@@ -4,7 +4,7 @@ config();
 const apiKey = process.env.GEMINI_API_KEY;
 if (!apiKey) { console.error("No GEMINI_API_KEY"); process.exit(1); }
 const genAI = new GoogleGenerativeAI(apiKey);
-const models = ["gemini-3.5-flash", "gemini-1.5-flash", "gemini-1.5-pro"];
+const models = ["gemini-3.5-flash", "gemini-3.7-flash", "gemini-2.5-pro"];
 const prompt = { contents: [{ role: "user", parts: [{ text: "Say hello in 3 words." }] }] };
 for (const modelName of models) {
   const m = genAI.getGenerativeModel({ model: modelName });

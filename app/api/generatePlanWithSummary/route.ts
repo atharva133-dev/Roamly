@@ -136,8 +136,8 @@ export async function POST(req: Request) {
     if (!text) {
       const preferredModel = process.env.GEMINI_MODEL;
       const candidateModels = preferredModel
-        ? [preferredModel, "gemini-3.5-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
-        : ["gemini-3.5-flash", "gemini-1.5-flash", "gemini-1.5-pro"];
+        ? [preferredModel, "gemini-3.5-flash", "gemini-3.7-flash", "gemini-2.5-pro"]
+        : ["gemini-3.5-flash", "gemini-3.7-flash", "gemini-2.5-pro"];
 
       let result: any = null;
       let lastError: unknown = null;
@@ -171,18 +171,29 @@ export async function POST(req: Request) {
 
     text = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
 
+    // Parse JSON with auto-fix - try multiple strategies
     let travelPlan: TravelPlan;
     try {
       travelPlan = JSON.parse(text);
-    } catch {
-      let fixed = text;
-      fixed = fixed.replace(/,(\s*[}\]])/g, "$1");
-      fixed = fixed.replace(/`/g, "").trim();
-
-      try {
-        travelPlan = JSON.parse(fixed);
-      } catch {
-        throw new Error(`Failed to parse AI response as JSON: ${text.substring(0, 100)}...`);
+    } catch (firstError) {
+      // Try to extract JSON by finding first { and last }
+      const firstBrace = text.indexOf('{');
+      const lastBrace = text.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        const jsonText = text.substring(firstBrace, lastBrace + 1);
+        try {
+          travelPlan = JSON.parse(jsonText);
+        } catch (secondError) {
+          // Try fixing trailing commas
+          const fixed = jsonText.replace(/,\s*([\]}])/g, '$1');
+          try {
+            travelPlan = JSON.parse(fixed);
+          } catch (thirdError) {
+            throw new Error(`Failed to parse AI response as JSON: ${text.substring(0, 200)}...`);
+          }
+        }
+      } else {
+        throw new Error(`Failed to parse AI response as JSON: ${text.substring(0, 200)}...`);
       }
     }
 
