@@ -344,15 +344,26 @@ export default function HomePage() {
               <Button
                 asChild
                 variant="outline"
-                className="h-12 rounded-full px-7 text-base font-semibold border-[#cfd4c5] bg-white/95 hover:bg-white hover:border-[#38480e] text-[#1a1a1a] shadow-xs hover:shadow-md transition-all duration-300"
+                className="h-12 rounded-full px-6 text-sm font-semibold border-[#cfd4c5] bg-white/95 hover:bg-[#DFECC6]/40 hover:border-[#38480e] text-[#1a1a1a] shadow-xs hover:shadow-md transition-all duration-300"
               >
-                <a href="#itinerary-widget" className="flex items-center gap-2.5">
-                  <span className="inline-flex size-6 items-center justify-center rounded-full bg-[#1a1a1a] text-white shadow-xs">
-                    <svg width="10" height="12" viewBox="0 0 10 12" fill="currentColor">
+                <Link href="/guide-register" className="flex items-center gap-2">
+                  <Sparkles className="size-4 text-[#38480e]" />
+                  Become a Guide
+                </Link>
+              </Button>
+
+              <Button
+                asChild
+                variant="ghost"
+                className="h-12 rounded-full px-6 text-sm font-semibold text-[#4e5546] hover:text-[#1a1a1a] hover:bg-black/5 transition-all duration-300"
+              >
+                <a href="#itinerary-widget" className="flex items-center gap-2">
+                  <span className="inline-flex size-5 items-center justify-center rounded-full bg-[#1a1a1a] text-white shadow-xs">
+                    <svg width="8" height="10" viewBox="0 0 10 12" fill="currentColor">
                       <polygon points="2,1 9,6 2,11" />
                     </svg>
                   </span>
-                  Watch How It Works
+                  How It Works
                 </a>
               </Button>
             </div>
@@ -921,6 +932,121 @@ export default function HomePage() {
       </section>
 
       {/* ---------------------------------------------------------------------- */}
+      {/* 4.5. LOCAL GUIDES & GUIDE REGISTRATION SPOTLIGHT                       */}
+      {/* ---------------------------------------------------------------------- */}
+      <section className="py-16 sm:py-24 border-b border-[#e5e7db] bg-gradient-to-br from-[#FAFBF8] via-[#f4f7ee] to-[#FAFBF8]">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
+            
+            <div className="lg:col-span-7">
+              <span className="rounded-full bg-[#DFECC6]/60 border border-[#8E9C78]/30 px-3.5 py-1 text-xs font-bold uppercase tracking-wider text-[#38480e] inline-flex items-center gap-1.5">
+                <Sparkles className="size-3.5 text-[#38480e]" />
+                Roamly Guide Network
+              </span>
+              <h2 className="mt-4 text-3xl sm:text-4xl lg:text-5xl font-serif font-bold tracking-tight text-[#1a1a1a] leading-tight">
+                Connect with Verified Local Guides
+              </h2>
+              <p className="mt-4 text-base text-[#4e5546] leading-relaxed max-w-xl">
+                Discover cities through the eyes of certified local experts. From heritage walks and hidden architecture to authentic street food trails — or register your own expertise to host curious travelers.
+              </p>
+
+              <div className="mt-8 flex flex-wrap items-center gap-3.5">
+                <Button
+                  asChild
+                  className="h-11 rounded-full px-7 text-sm font-semibold bg-[#38480e] hover:bg-[#2b380b] text-white shadow-md shadow-[#38480e]/20 hover:shadow-lg transition-all cursor-pointer"
+                >
+                  <Link href="/guide-register">
+                    <Sparkles className="mr-2 size-4" />
+                    Register as a Local Guide
+                  </Link>
+                </Button>
+
+                <Button
+                  asChild
+                  variant="outline"
+                  className="h-11 rounded-full px-6 text-sm font-semibold border-[#cfd4c5] bg-white hover:bg-[#DFECC6]/30 text-[#1a1a1a] transition-all"
+                >
+                  <Link href="/guides">
+                    Explore Guides in Mumbai
+                    <ArrowRight className="ml-2 size-4" />
+                  </Link>
+                </Button>
+              </div>
+
+              <div className="mt-8 grid grid-cols-3 gap-4 border-t border-[#e5e7db] pt-6 max-w-md">
+                <div>
+                  <div className="text-xl font-bold text-[#1a1a1a]">100%</div>
+                  <div className="text-xs text-[#6b7280]">Verified Credentials</div>
+                </div>
+                <div>
+                  <div className="text-xl font-bold text-[#1a1a1a]">₹800+</div>
+                  <div className="text-xs text-[#6b7280]">Avg Hourly Rate</div>
+                </div>
+                <div>
+                  <div className="text-xl font-bold text-[#1a1a1a]">Flexible</div>
+                  <div className="text-xs text-[#6b7280]">Custom Schedule</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Visual Card */}
+            <div className="lg:col-span-5">
+              <div className="relative rounded-3xl border border-[#dce3d0] bg-white/95 p-6 shadow-xl backdrop-blur-md">
+                <div className="flex items-center gap-4 border-b border-[#e5e7db] pb-5">
+                  <div className="relative size-14 rounded-2xl overflow-hidden border-2 border-[#DFECC6]">
+                    <Image
+                      src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80"
+                      alt="Guide preview"
+                      fill
+                      className="object-cover"
+                    />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-sm text-[#1a1a1a]">Aarav Sharma</span>
+                      <span className="text-[10px] font-semibold bg-[#DFECC6] text-[#38480e] px-2 py-0.5 rounded-full">
+                        Verified Guide
+                      </span>
+                    </div>
+                    <div className="text-xs text-[#6b7280] flex items-center gap-1 mt-0.5">
+                      <MapPin className="size-3 text-[#38480e]" />
+                      Gateway of India &amp; Colaba Heritage
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 space-y-2.5 text-xs text-[#4e5546]">
+                  <div className="flex justify-between py-1 border-b border-[#f0f2eb]">
+                    <span className="text-[#6b7280]">Experience</span>
+                    <span className="font-semibold text-[#1a1a1a]">6 Years</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-[#f0f2eb]">
+                    <span className="text-[#6b7280]">Languages</span>
+                    <span className="font-semibold text-[#1a1a1a]">English, Hindi, Marathi</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-[#f0f2eb]">
+                    <span className="text-[#6b7280]">Rate</span>
+                    <span className="font-semibold text-[#38480e]">₹1,200 / hr</span>
+                  </div>
+                </div>
+
+                <div className="mt-5 rounded-2xl bg-[#f8faf5] p-3 border border-[#e5e7db] text-xs text-[#38480e] flex items-center justify-between">
+                  <span className="font-medium">Are you an expert in your city?</span>
+                  <Link
+                    href="/guide-register"
+                    className="font-bold underline hover:text-[#2c390b]"
+                  >
+                    Register today →
+                  </Link>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+      {/* ---------------------------------------------------------------------- */}
       {/* 5. REVIEWS                                                             */}
       {/* ---------------------------------------------------------------------- */}
       <section className="py-16 sm:py-24 border-b border-[#e5e7db] bg-gradient-to-b from-transparent via-[#f8faf5] to-transparent">
@@ -1018,8 +1144,10 @@ export default function HomePage() {
             <span>AI Travel Itinerary Platform</span>
           </div>
 
-          <div className="flex items-center gap-6 text-[#6b7280]">
+          <div className="flex flex-wrap items-center gap-6 text-[#6b7280]">
             <Link href="/llm" className="hover:text-[#485C11] transition-colors">Planner</Link>
+            <Link href="/guides" className="hover:text-[#485C11] transition-colors">Local Guides</Link>
+            <Link href="/guide-register" className="hover:text-[#485C11] transition-colors font-medium text-[#485C11]">Become a Guide</Link>
             <Link href="/mapcalendar" className="hover:text-[#485C11] transition-colors">Schedule</Link>
             <Link href="/community" className="hover:text-[#485C11] transition-colors">Community</Link>
           </div>

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import {
   MapPin,
   Star,
@@ -182,24 +183,36 @@ export default function GuideDiscoveryPage() {
               </p>
             </div>
 
-            <Button
-              variant="outline"
-              onClick={handleSeedData}
-              disabled={seeding}
-              className="border-[#485C11]/30 hover:bg-[#DFECC6]/40 text-[#485C11] text-xs h-9 rounded-full self-start md:self-auto cursor-pointer"
-            >
-              {seeding ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
-                  Seeding Verified Guides...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-3.5 h-3.5 mr-1.5" />
-                  Seed Demo Guides &amp; Locations
-                </>
-              )}
-            </Button>
+            <div className="flex flex-wrap items-center gap-2.5 self-start md:self-auto">
+              <Button
+                asChild
+                className="bg-[#485C11] hover:bg-[#38480e] text-white text-xs h-9 rounded-full px-4 shadow-sm cursor-pointer"
+              >
+                <Link href="/guide-register" className="flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Register as a Guide
+                </Link>
+              </Button>
+
+              <Button
+                variant="outline"
+                onClick={handleSeedData}
+                disabled={seeding}
+                className="border-[#485C11]/30 hover:bg-[#DFECC6]/40 text-[#485C11] text-xs h-9 rounded-full cursor-pointer"
+              >
+                {seeding ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
+                    Seeding...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+                    Seed Demo Guides
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
 
           {/* Location Filter Chips */}

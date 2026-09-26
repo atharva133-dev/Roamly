@@ -1,7 +1,7 @@
 "use client"
 
 import { SignedIn, SignedOut, UserButton, useUser, useClerk } from "@clerk/nextjs"
-import { Sparkles, Menu, X, CalendarDays, Users, Plane } from "lucide-react"
+import { Sparkles, Menu, X, CalendarDays, Users, Plane, Compass } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -59,8 +59,17 @@ export function SiteNav() {
             </Link>
           </nav>
 
-          {/* Right side: Search button + Auth */}
-          <div className="flex items-center gap-3.5 shrink-0">
+          {/* Right side: Search button + Become a Guide + Auth */}
+          <div className="flex items-center gap-3 shrink-0">
+            {/* Become a Guide CTA */}
+            <Link
+              href="/guide-register"
+              className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border border-[#8E9C78]/50 bg-[#DFECC6]/50 hover:bg-[#DFECC6] text-[#38480e] transition-all duration-200"
+            >
+              <Compass className="size-3.5" />
+              <span>Become a Guide</span>
+            </Link>
+
             {/* Circular Search Icon Button */}
             <button
               type="button"
@@ -106,6 +115,15 @@ export function SiteNav() {
             }`}
         >
           <div className="bg-background/95 backdrop-blur-xl px-4 py-3 flex flex-col gap-1 border-b border-[#e5e7db]/80">
+            {/* Guide Register quick link on mobile */}
+            <Link
+              href="/guide-register"
+              onClick={closeMobile}
+              className="flex items-center gap-3 px-3 py-2.5 mb-1 rounded-lg text-xs font-semibold text-[#38480e] bg-[#DFECC6]/60 border border-[#8E9C78]/40"
+            >
+              <Compass className="size-4 text-[#38480e]" />
+              Become a Verified Guide
+            </Link>
 
             {/* Signed-in mobile top links */}
             <SignedIn>
@@ -132,6 +150,7 @@ export function SiteNav() {
             {/* Signed-out mobile links */}
             <SignedOut>
               <Link href="/#destinations" onClick={closeMobile} className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-[#e5e7db]/40 transition-all duration-200">Destinations</Link>
+              <Link href="/guides" onClick={closeMobile} className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-[#e5e7db]/40 transition-all duration-200">Local Guides</Link>
               <Link href="/#itinerary-widget" onClick={closeMobile} className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-[#e5e7db]/40 transition-all duration-200">Preview</Link>
               <Link href="/#comparison" onClick={closeMobile} className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-[#e5e7db]/40 transition-all duration-200">Why Roamly</Link>
               <Link href="/community" onClick={closeMobile} className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-[#e5e7db]/40 transition-all duration-200">Community</Link>
