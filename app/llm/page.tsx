@@ -602,7 +602,17 @@ export default function LLMPage() {
         body: JSON.stringify(payload),
       });
 
-      const data: ItineraryPlanResponse = await res.json();
+      if (res.status === 401) {
+        throw new Error("Please sign in to generate a trip plan — itineraries are saved to your account.");
+      }
+
+      const rawText = await res.text();
+      let data: ItineraryPlanResponse;
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        throw new Error(`Server returned a non-JSON response (HTTP ${res.status}). Please try again.`);
+      }
 
       if (!data.success) {
         throw new Error(data.error?.message || "Itinerary generation failed validation");

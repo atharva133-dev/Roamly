@@ -25,6 +25,17 @@ export default clerkMiddleware(async (auth, req) => {
   const { userId } = await auth();
 
   if (!isPublicRoute(req) && !userId) {
+    // API routes must get a JSON 401, never an HTML redirect — a fetch()
+    // caller can't follow a redirect into a sign-in page and still parse
+    // the response as JSON (this was causing "Unexpected token '<' ...
+    // is not valid JSON" on protected endpoints like /api/itinerary/plan).
+    if (req.nextUrl.pathname.startsWith("/api")) {
+      return NextResponse.json(
+        { success: false, error: { code: "UNAUTHENTICATED", message: "Sign in required" } },
+        { status: 401 }
+      );
+    }
+
     // Redirect unauthenticated users to Clerk sign-in page
     const signInUrl = new URL("/sign-in", req.url);
     return NextResponse.redirect(signInUrl);
