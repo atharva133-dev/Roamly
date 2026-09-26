@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { differenceInDays, parseISO, format } from "date-fns";
 import type { DateRange } from "react-day-picker";
@@ -52,7 +52,10 @@ import {
   ChevronDown,
   ChevronUp,
   ShieldCheck,
-  ShieldAlert
+  ShieldAlert,
+  User,
+  Languages,
+  Award
 } from "lucide-react";
 
 interface TravelDetails {
@@ -76,6 +79,20 @@ interface ItineraryDay {
   accommodation: string;
   meals: string;
   estimated_cost: string;
+  guide?: {
+    guideId: string;
+    name: string;
+    isDemo: boolean;
+    isBookable: boolean;
+    hourlyRate: number;
+    cost: number;
+  } | null;
+  weather?: {
+    description: string;
+    emoji: string;
+    minC: number;
+    maxC: number;
+  } | null;
 }
 
 interface TravelPlan {
@@ -285,9 +302,18 @@ function adaptAgentResponseToTravelPlan(result: ItineraryPlanSuccess): TravelPla
       morning: bySlot("morning"),
       afternoon: bySlot("afternoon"),
       evening: bySlot("evening"),
-      accommodation: `${weatherNote}`,
-      meals: guideNote,
+      accommodation: `Hotel / Stay near ${day.city}`,
+      meals: `Local culinary specialties in ${day.city}`,
       estimated_cost: `₹${day.dayEstimatedCost.toLocaleString("en-IN")}`,
+      guide: day.guide || null,
+      weather: day.weather.available
+        ? {
+            description: day.weather.description,
+            emoji: weatherEmoji(day.weather.description),
+            minC: Math.round(day.weather.temperatureMinC),
+            maxC: Math.round(day.weather.temperatureMaxC),
+          }
+        : null,
     };
   });
 
@@ -354,6 +380,29 @@ export default function LLMPage() {
   const [guidePreference, setGuidePreference] = useState<"NO_GUIDE" | "NEED_GUIDE" | "CHOOSE_GUIDE">("NO_GUIDE");
   const [agentResult, setAgentResult] = useState<ItineraryPlanSuccess | null>(null);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+
+  // Guide selection state (for CHOOSE_GUIDE mode)
+  interface AvailableGuide {
+    id: string;
+    userId: string;
+    name: string;
+    profilePhoto: string | null;
+    bio: string | null;
+    rating: number;
+    experienceYears: number;
+    hourlyRate: number;
+    languages: string[];
+    expertise: string[];
+    verificationStatus: string;
+    availabilityStatus: string;
+    isCurrentlyAtLocation: boolean;
+    currentLocation: { id: string; name: string } | null;
+    coveredLocations: { id: string; name: string }[];
+  }
+  const [availableGuides, setAvailableGuides] = useState<AvailableGuide[]>([]);
+  const [selectedGuide, setSelectedGuide] = useState<AvailableGuide | null>(null);
+  const [loadingGuides, setLoadingGuides] = useState(false);
+  const [guideSearchCity, setGuideSearchCity] = useState<string>("");
 
   const derivedBudget = deriveBudgetCategory(customBudget);
   const searchTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
@@ -564,6 +613,51 @@ export default function LLMPage() {
     }
   };
 
+  // Fetch available guides for a destination city
+  const fetchGuidesForDestinations = async (targetCity?: string) => {
+    const destNames = selectedDestinations.length > 0
+      ? selectedDestinations.map((d) => d.name)
+      : citiesText.split(",").map((s) => s.trim()).filter(Boolean);
+
+    const city = targetCity || (destNames.length > 0 ? destNames[0] : guideSearchCity);
+    if (!city) {
+      setAvailableGuides([]);
+      return;
+    }
+
+    setLoadingGuides(true);
+    setGuideSearchCity(city);
+
+    try {
+      const res = await fetch(`/api/guides?city=${encodeURIComponent(city)}`);
+      if (res.ok) {
+        const text = await res.text();
+        if (text) {
+          const data = JSON.parse(text);
+          if (data.guides && Array.isArray(data.guides)) {
+            setAvailableGuides(data.guides);
+          } else {
+            setAvailableGuides([]);
+          }
+        }
+      } else {
+        setAvailableGuides([]);
+      }
+    } catch (err) {
+      console.error("Failed to fetch guides:", err);
+      setAvailableGuides([]);
+    } finally {
+      setLoadingGuides(false);
+    }
+  };
+
+  // Automatically fetch guides whenever destination or guide preference changes
+  useEffect(() => {
+    if (guidePreference === "CHOOSE_GUIDE") {
+      fetchGuidesForDestinations();
+    }
+  }, [selectedDestinations, citiesText, guidePreference]);
+
   const generatePlan = async () => {
     setLoading(true);
     setError("");
@@ -607,6 +701,7 @@ export default function LLMPage() {
         travelStyle: travelInterests[0] || "Cultural",
         pace: "MODERATE" as const,
         guidePreference,
+        selectedGuideId: selectedGuide?.id || null,
       };
 
       // Always use direct API but simulate queue experience
@@ -681,6 +776,7 @@ export default function LLMPage() {
       transportation,
       travelerCount,
       guidePreference,
+      selectedGuide: selectedGuide ? { id: selectedGuide.id, name: selectedGuide.name } : null,
       interests: travelInterests,
       acceptedAt: new Date().toISOString(),
     };
@@ -1050,7 +1146,15 @@ export default function LLMPage() {
                       type="button"
                       size="sm"
                       variant={guidePreference === option.value ? "default" : "outline"}
-                      onClick={() => setGuidePreference(option.value)}
+                      onClick={() => {
+                        setGuidePreference(option.value);
+                        if (option.value === "CHOOSE_GUIDE") {
+                          fetchGuidesForDestinations();
+                        } else {
+                          setSelectedGuide(null);
+                          setAvailableGuides([]);
+                        }
+                      }}
                     >
                       {option.label}
                     </Button>
@@ -1058,6 +1162,227 @@ export default function LLMPage() {
                 </div>
               </div>
             </div>
+
+            {/* ─── Auto-matching Guide Banner (visible when NEED_GUIDE is selected) ─── */}
+            {guidePreference === "NEED_GUIDE" && (
+              <div className="mt-4 rounded-2xl border border-[#DFECC6] bg-gradient-to-r from-[#DFECC6]/40 via-[#f4f7ee] to-white p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-[#485C11]/15 flex items-center justify-center shrink-0">
+                    <CheckCircle className="w-5 h-5 text-[#485C11]" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-[#1a1a1a]">Auto-Assigning Top-Rated Local Guide</p>
+                    <p className="text-[11px] text-[#6b7280]">
+                      Roamly will match and assign a verified licensed guide for your destination.
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setGuidePreference("CHOOSE_GUIDE");
+                    fetchGuidesForDestinations();
+                  }}
+                  className="text-xs shrink-0 bg-white hover:bg-[#DFECC6]/30 border-[#8E9C78]/50"
+                >
+                  <User className="w-3.5 h-3.5 mr-1 text-[#485C11]" />
+                  Browse & Pick Specific Guide
+                </Button>
+              </div>
+            )}
+
+            {/* ─── Guide Picker Panel (visible when CHOOSE_GUIDE is selected) ─── */}
+            {guidePreference === "CHOOSE_GUIDE" && (
+              <div className="mt-4 rounded-2xl border border-[#e5e7db] bg-gradient-to-br from-[#fafbf8] to-[#f5f7f0] p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-[#485C11]/10 flex items-center justify-center">
+                      <User className="w-4 h-4 text-[#485C11]" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-[#1a1a1a]">Choose Your Guide</h3>
+                      <p className="text-xs text-[#6b7280]">
+                        {guideSearchCity ? `Showing guides for ${guideSearchCity}` : "Add a destination to see available guides"}
+                      </p>
+                    </div>
+                  </div>
+                  {(selectedDestinations.length > 0 || citiesText.trim()) && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => fetchGuidesForDestinations(guideSearchCity)}
+                      className="text-xs"
+                    >
+                      <RotateCcw className="w-3 h-3 mr-1" />
+                      Refresh
+                    </Button>
+                  )}
+                </div>
+
+                {/* Destination area switcher if multiple stops exist */}
+                {selectedDestinations.length > 1 && (
+                  <div className="flex items-center gap-1.5 flex-wrap mb-4 pb-3 border-b border-[#e5e7db]/70">
+                    <span className="text-[11px] font-semibold text-[#6b7280]">Destination Area:</span>
+                    {selectedDestinations.map((dest) => {
+                      const isCurrent = guideSearchCity.toLowerCase() === dest.name.toLowerCase();
+                      return (
+                        <button
+                          key={dest.name}
+                          type="button"
+                          onClick={() => fetchGuidesForDestinations(dest.name)}
+                          className={`text-xs px-2.5 py-1 rounded-full font-medium transition-all ${
+                            isCurrent
+                              ? "bg-[#485C11] text-white shadow-xs"
+                              : "bg-white border border-[#e5e7db] text-[#4a5043] hover:border-[#8E9C78]"
+                          }`}
+                        >
+                          📍 {dest.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {loadingGuides ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="w-6 h-6 text-[#485C11] animate-spin" />
+                    <span className="ml-2 text-sm text-[#6b7280]">Searching for guides…</span>
+                  </div>
+                ) : availableGuides.length === 0 ? (
+                  <div className="text-center py-8">
+                    <User className="w-10 h-10 text-[#9ca3af] mx-auto mb-2" />
+                    <p className="text-sm text-[#6b7280]">
+                      {guideSearchCity
+                        ? `No verified guides found for ${guideSearchCity}. Try "Need a Guide" to auto-assign one.`
+                        : "Enter a destination above to browse available guides."}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
+                    {availableGuides.map((guide) => {
+                      const isSelected = selectedGuide?.id === guide.id;
+                      return (
+                        <button
+                          key={guide.id}
+                          type="button"
+                          onClick={() => setSelectedGuide(isSelected ? null : guide)}
+                          className={`w-full text-left rounded-2xl border-2 p-4 transition-all duration-200 hover:shadow-md ${
+                            isSelected
+                              ? "border-[#485C11] bg-[#485C11]/5 shadow-md ring-2 ring-[#485C11]/20"
+                              : "border-[#e5e7db] bg-white hover:border-[#8E9C78]"
+                          }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            {/* Guide Photo */}
+                            <div className={`w-14 h-14 rounded-xl overflow-hidden shrink-0 border-2 ${
+                              isSelected ? "border-[#485C11]" : "border-[#e5e7db]"
+                            }`}>
+                              {guide.profilePhoto ? (
+                                <img
+                                  src={guide.profilePhoto}
+                                  alt={guide.name}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <div className="w-full h-full bg-[#DFECC6] flex items-center justify-center">
+                                  <User className="w-6 h-6 text-[#485C11]" />
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Guide Info */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <p className="text-sm font-bold text-[#1a1a1a] truncate">{guide.name}</p>
+                                {isSelected && (
+                                  <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#485C11] text-white">
+                                    <Check className="w-3 h-3" /> Selected
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-3 mt-1">
+                                <span className="inline-flex items-center gap-1 text-xs text-amber-600">
+                                  <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
+                                  {guide.rating.toFixed(1)}
+                                </span>
+                                <span className="inline-flex items-center gap-1 text-xs text-[#6b7280]">
+                                  <Award className="w-3 h-3" />
+                                  {guide.experienceYears}y exp
+                                </span>
+                                <span className="inline-flex items-center gap-1 text-xs font-semibold text-[#485C11]">
+                                  <IndianRupee className="w-3 h-3" />
+                                  {guide.hourlyRate}/hr
+                                </span>
+                              </div>
+
+                              {/* Languages */}
+                              {guide.languages.length > 0 && (
+                                <div className="flex items-center gap-1 mt-1.5">
+                                  <Languages className="w-3 h-3 text-[#9ca3af] shrink-0" />
+                                  <div className="flex gap-1 flex-wrap">
+                                    {guide.languages.slice(0, 4).map((lang) => (
+                                      <span key={lang} className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#f0f4e8] text-[#485C11] font-medium">
+                                        {lang}
+                                      </span>
+                                    ))}
+                                    {guide.languages.length > 4 && (
+                                      <span className="text-[10px] text-[#9ca3af]">+{guide.languages.length - 4}</span>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Expertise */}
+                              {guide.expertise.length > 0 && (
+                                <div className="flex gap-1 flex-wrap mt-1.5">
+                                  {guide.expertise.slice(0, 3).map((exp) => (
+                                    <span key={exp} className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#e8eaf0] text-[#4a5043] font-medium">
+                                      {exp}
+                                    </span>
+                                  ))}
+                                  {guide.expertise.length > 3 && (
+                                    <span className="text-[10px] text-[#9ca3af]">+{guide.expertise.length - 3}</span>
+                                  )}
+                                </div>
+                              )}
+
+                              {guide.bio && (
+                                <p className="text-xs text-[#6b7280] mt-1.5 line-clamp-2 italic">
+                                  &ldquo;{guide.bio}&rdquo;
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Selected guide confirmation */}
+                {selectedGuide && (
+                  <div className="mt-3 flex items-center gap-2 p-3 rounded-xl bg-[#DFECC6]/50 border border-[#8E9C78]/40">
+                    <CheckCircle className="w-4 h-4 text-[#485C11] shrink-0" />
+                    <p className="text-xs font-medium text-[#38480e]">
+                      <span className="font-bold">{selectedGuide.name}</span> will be assigned as your local guide
+                      {" · "}
+                      <span className="text-[#485C11]">₹{selectedGuide.hourlyRate}/hr</span>
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedGuide(null)}
+                      className="ml-auto text-[#6b7280] hover:text-red-500 transition-colors"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Travel Interests (Combined Multi-select Dropdown) */}
             <div>
@@ -1383,26 +1708,38 @@ export default function LLMPage() {
               <CardContent>
                 <div className="space-y-6">
                   {(plan?.itinerary || []).map((day, idx) => (
-                    <div key={idx} className="border-l-2 border-blue-200 pl-4">
-                      <div className="mb-3">
-                        <h3 className="font-semibold text-lg text-gray-900">{day.day}</h3>
-                        <Badge variant="outline" className="text-xs">
-                          <MapPin className="h-3 w-3 mr-1" />
-                          {day.city}
+                    <div key={idx} className="border-l-2 border-[#485C11]/30 pl-4 py-1">
+                      <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="font-semibold text-lg text-gray-900">{day.day}</h3>
+                          <Badge variant="outline" className="text-xs">
+                            <MapPin className="h-3 w-3 mr-1 text-[#485C11]" />
+                            {day.city}
+                          </Badge>
+                          {day.weather && (
+                            <Badge variant="secondary" className="text-xs bg-sky-50 text-sky-800 border-sky-200">
+                              <span className="mr-1">{day.weather.emoji}</span>
+                              {day.weather.description} · {day.weather.minC}–{day.weather.maxC}°C
+                            </Badge>
+                          )}
+                        </div>
+                        <Badge variant="secondary" className="text-xs font-semibold text-[#485C11] bg-[#DFECC6]/60">
+                          <IndianRupee className="h-3 w-3 mr-1" />
+                          {day.estimated_cost}
                         </Badge>
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
-                        <div>
-                          <p className="text-xs font-medium text-gray-500 uppercase">Morning</p>
+                        <div className="p-2.5 rounded-xl bg-gray-50/70 border border-gray-100">
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Morning</p>
                           <p className="text-sm text-gray-700">{day.morning}</p>
                         </div>
-                        <div>
-                          <p className="text-xs font-medium text-gray-500 uppercase">Afternoon</p>
+                        <div className="p-2.5 rounded-xl bg-gray-50/70 border border-gray-100">
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Afternoon</p>
                           <p className="text-sm text-gray-700">{day.afternoon}</p>
                         </div>
-                        <div>
-                          <p className="text-xs font-medium text-gray-500 uppercase">Evening</p>
+                        <div className="p-2.5 rounded-xl bg-gray-50/70 border border-gray-100">
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Evening</p>
                           <p className="text-sm text-gray-700">{day.evening}</p>
                         </div>
                       </div>
@@ -1413,17 +1750,39 @@ export default function LLMPage() {
                           <p className="text-sm text-gray-700">{day.accommodation}</p>
                         </div>
                         <div>
-                          <p className="text-xs font-medium text-gray-500 uppercase">Meals</p>
+                          <p className="text-xs font-medium text-gray-500 uppercase">Dining & Food</p>
                           <p className="text-sm text-gray-700">{day.meals}</p>
                         </div>
                       </div>
 
-                      <div>
-                        <Badge variant="secondary" className="text-xs">
-                          <IndianRupee className="h-3 w-3 mr-1" />
-                          {day.estimated_cost}
-                        </Badge>
-                      </div>
+                      {/* Dedicated Local Guide Card */}
+                      {day.guide ? (
+                        <div className="mt-3 p-3 rounded-xl bg-[#DFECC6]/40 border border-[#8E9C78]/30 flex items-center justify-between flex-wrap gap-2">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-lg bg-[#485C11]/15 flex items-center justify-center text-[#485C11] shrink-0">
+                              <User className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <p className="text-xs font-bold text-[#1a1a1a]">
+                                Local Guide: {day.guide.name}
+                                {day.guide.isDemo && (
+                                  <span className="ml-1 text-[10px] text-amber-600 font-normal">(Demo Guide)</span>
+                                )}
+                              </p>
+                              <p className="text-[11px] text-[#6b7280]">
+                                Dedicated local expertise · ₹{day.guide.hourlyRate}/hr (est. ₹{day.guide.cost})
+                              </p>
+                            </div>
+                          </div>
+                          <Badge variant="secondary" className="text-[10px] bg-[#485C11] text-white">
+                            Verified Guide
+                          </Badge>
+                        </div>
+                      ) : (
+                        <div className="mt-2 text-xs text-[#9ca3af] italic">
+                          Self-guided exploration
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

@@ -6,8 +6,10 @@ import { getDemoGuides } from "@/server/src/services/demoGuides.js";
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const locationId = searchParams.get("locationId");
-  const city = searchParams.get("city");
+  const rawCity = searchParams.get("city");
   const language = searchParams.get("language");
+
+  const city = rawCity ? rawCity.split(",")[0].trim() : null;
 
   try {
     if (!locationId && !city) {
@@ -46,7 +48,7 @@ export async function GET(req: Request) {
       guideWhere.locations = {
         some: {
           location: {
-            city: { equals: city, mode: "insensitive" }
+            city: { contains: city, mode: "insensitive" }
           },
           is_active: true
         }
@@ -106,19 +108,34 @@ export async function GET(req: Request) {
       }))
     }));
 
+    if (formattedGuides.length > 0) {
+      return NextResponse.json({
+        location: targetLocation ? targetLocation.name : (city || "Area"),
+        city: targetLocation ? targetLocation.city : (city || "Area"),
+        totalAvailable: formattedGuides.length,
+        guides: formattedGuides
+      });
+    }
+
+    // Fallback: If DB has no guides registered for this location yet, serve verified demo guides
+    const fallbackCity = city || (targetLocation ? targetLocation.city : "Mumbai");
+    const demoGuides = getDemoGuides(fallbackCity);
+
     return NextResponse.json({
-      location: targetLocation ? targetLocation.name : city,
-      city: targetLocation ? targetLocation.city : city,
-      totalAvailable: formattedGuides.length,
-      guides: formattedGuides
+      location: targetLocation ? targetLocation.name : fallbackCity,
+      city: fallbackCity,
+      totalAvailable: demoGuides.length,
+      guides: demoGuides,
+      isDemo: true
     });
   } catch (error) {
     console.warn("DB offline or unreachable, serving verified demo guides fallback:", error);
-    const demoGuides = getDemoGuides(city || "Mumbai");
+    const fallbackCity = city || "Mumbai";
+    const demoGuides = getDemoGuides(fallbackCity);
 
     return NextResponse.json({
-      location: "Gateway of India",
-      city: "Mumbai",
+      location: fallbackCity,
+      city: fallbackCity,
       totalAvailable: demoGuides.length,
       guides: demoGuides,
       isDemo: true

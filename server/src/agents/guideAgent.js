@@ -58,6 +58,7 @@ async function findGuidesForLocation(prisma, location) {
 
 export async function execute(context) {
   const guidePreference = context?.tripRequest?.guidePreference || "NO_GUIDE";
+  const selectedGuideId = context?.tripRequest?.selectedGuideId || null;
   const resolvedLocations = context?.resolvedLocations || [];
 
   if (guidePreference === "NO_GUIDE") {
@@ -74,6 +75,37 @@ export async function execute(context) {
   const noGuideDestinations = [];
 
   const prisma = await getPrismaClient();
+
+  // If a specific guide was chosen by the user, fetch them first
+  let chosenGuide = null;
+  if (selectedGuideId && prisma && guidePreference === "CHOOSE_GUIDE") {
+    try {
+      const g = await prisma.guideProfile.findUnique({
+        where: { id: selectedGuideId },
+        include: {
+          user: { select: { full_name: true, email: true, profile_photo_url: true } },
+          locations: { include: { location: true } },
+          current_location: true
+        }
+      });
+      if (g) {
+        chosenGuide = formatDbGuide(g, null);
+      }
+    } catch (err) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(`[Guide Agent] Failed to fetch chosen guide ${selectedGuideId}: ${err.message}`);
+      }
+    }
+  }
+
+  // Fallback to demo guides catalog if DB was offline or guide is in the demo catalog
+  if (!chosenGuide && selectedGuideId && guidePreference === "CHOOSE_GUIDE") {
+    const allDemoGuides = getDemoGuides();
+    const demoFound = allDemoGuides.find((g) => g.id === selectedGuideId);
+    if (demoFound) {
+      chosenGuide = demoFound;
+    }
+  }
 
   for (const location of resolvedLocations) {
     let guides = [];
@@ -97,13 +129,18 @@ export async function execute(context) {
       }
     }
 
+    // If user chose a specific guide, place them first (and deduplicate)
+    if (chosenGuide) {
+      guides = [chosenGuide, ...guides.filter((g) => g.id !== chosenGuide.id)];
+    }
+
     matchedGuides[location.id] = guides;
     if (guides.length === 0) noGuideDestinations.push(location.name);
   }
 
   return {
     success: true,
-    data: { matchedGuides },
+    data: { matchedGuides, selectedGuideId: chosenGuide ? chosenGuide.id : null },
     warnings:
       noGuideDestinations.length > 0
         ? [{ code: "NO_ROAMLY_GUIDE_AVAILABLE", details: `No guide available for: ${noGuideDestinations.join(", ")}` }]

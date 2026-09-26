@@ -18,6 +18,7 @@ interface ItineraryPlanRequestBody {
   travelStyle: string;
   pace: "RELAXED" | "MODERATE" | "FAST";
   guidePreference: "NO_GUIDE" | "NEED_GUIDE" | "CHOOSE_GUIDE";
+  selectedGuideId?: string | null;
 }
 
 function validateRequest(body: Partial<ItineraryPlanRequestBody>): string[] {
@@ -106,7 +107,8 @@ export async function POST(req: Request) {
     interests: body.interests || [],
     travelStyle: body.travelStyle || "Cultural",
     pace: body.pace || "MODERATE",
-    guidePreference: body.guidePreference || "NO_GUIDE"
+    guidePreference: body.guidePreference || "NO_GUIDE",
+    selectedGuideId: body.selectedGuideId || null
   };
 
   try {
