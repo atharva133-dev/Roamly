@@ -70,7 +70,9 @@ interface AcceptedTripData {
   destinations: string[];
   startDate: string;
   endDate: string;
+  totalBudget?: number;
   budget: string;
+  budgetCategory?: string;
   accommodation: string;
   transportation: string;
   interests: string[];
@@ -82,7 +84,9 @@ const SAMPLE_ACCEPTED_TRIP: AcceptedTripData = {
   destinations: ["Delhi", "Agra", "Jaipur"],
   startDate: format(new Date(), "yyyy-MM-dd"),
   endDate: format(addDays(new Date(), 6), "yyyy-MM-dd"),
-  budget: "Mid-range",
+  totalBudget: 60000,
+  budget: "₹60,000",
+  budgetCategory: "Mid-range",
   accommodation: "Boutique Heritage Hotel",
   transportation: "Express Train & Private Cab",
   interests: ["Cultural & Heritage", "Historical Sites", "Food & Culinary", "Photography & Scenic"],
@@ -346,10 +350,17 @@ export default function MySchedulePage() {
                   </span>
                 </div>
                 <div className="flex items-center justify-between border-b border-[#e5e7db]/70 pb-2">
-                  <span className="text-muted-foreground">Budget Tier:</span>
-                  <Badge variant="secondary" className="bg-[#DFECC6]/60 text-[#364A0E]">
-                    {tripData.budget || "Mid-range"}
-                  </Badge>
+                  <span className="text-muted-foreground">Total Budget:</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-semibold text-gray-800">
+                      {tripData.totalBudget ? `₹${tripData.totalBudget.toLocaleString("en-IN")}` : tripData.budget}
+                    </span>
+                    {(tripData.budgetCategory || tripData.budget) && (
+                      <Badge variant="secondary" className="bg-[#DFECC6]/60 text-[#364A0E] text-[10px] px-2 py-0.5">
+                        {tripData.budgetCategory || tripData.budget}
+                      </Badge>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center justify-between border-b border-[#e5e7db]/70 pb-2">
                   <span className="text-muted-foreground">Accommodation:</span>

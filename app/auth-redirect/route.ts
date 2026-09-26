@@ -34,8 +34,8 @@ export async function GET(req: Request) {
       });
     }
 
-    if (dbUser.role === "ADMIN") {
-      return NextResponse.redirect(new URL("/admin-page", req.url));
+    if (dbUser.role === "SUPER_ADMIN") {
+      return NextResponse.redirect(new URL("/admin-guides", req.url));
     } else {
       return NextResponse.redirect(new URL("/landing_page", req.url));
     }

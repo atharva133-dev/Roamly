@@ -36,7 +36,9 @@ import {
   RotateCcw,
   Edit3,
   ArrowRight,
-  Sparkles
+  Sparkles,
+  Search,
+  LocateFixed
 } from "lucide-react";
 
 interface TravelDetails {
@@ -79,10 +81,48 @@ interface ApiResponse {
   summary: string;
 }
 
-const budgetOptions = ["Backpacker", "Budget", "Mid-range", "Luxury"];
+export function deriveBudgetCategory(amountStr: string): {
+  category: "Budget" | "Mid-range" | "Premium" | "Luxury";
+  description: string;
+} {
+  const numeric = Math.max(0, parseInt(amountStr.replace(/[^0-9]/g, ""), 10) || 0);
+  const formatted = `₹${numeric.toLocaleString("en-IN")}`;
+  if (numeric < 50000) {
+    return {
+      category: "Budget",
+      description: `Based on your ${formatted} total trip budget`,
+    };
+  }
+  if (numeric < 100000) {
+    return {
+      category: "Mid-range",
+      description: `Based on your ${formatted} total trip budget`,
+    };
+  }
+  if (numeric < 200000) {
+    return {
+      category: "Premium",
+      description: `Based on your ${formatted} total trip budget`,
+    };
+  }
+  return {
+    category: "Luxury",
+    description: `Based on your ${formatted} total trip budget`,
+  };
+}
+
 const accommodationOptions = ["Hostel", "Hotel", "Airbnb", "Resort"];
 const transportOptions = ["Public Transport", "Car Rental", "Train", "Flight"];
 const travelStyleOptions = ["Cultural", "Adventure", "Relaxation", "Food & Wine", "Historical", "Nature", "Urban", "Rural"];
+
+export interface DestinationItem {
+  locationId?: string;
+  googlePlaceId?: string;
+  name: string;
+  formattedAddress?: string;
+  latitude?: number;
+  longitude?: number;
+}
 
 export default function LLMPage() {
   const [loading, setLoading] = useState(false);
@@ -93,13 +133,222 @@ export default function LLMPage() {
   const [decisionStatus, setDecisionStatus] = useState<'pending' | 'accepted' | 'rejected'>('pending');
 
   const [citiesText, setCitiesText] = useState("");
+  const [selectedDestinations, setSelectedDestinations] = useState<DestinationItem[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [suggestions, setSuggestions] = useState<Array<{
+    placeId: string;
+    name: string;
+    mainText: string;
+    secondaryText?: string;
+  }>>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [locatingCurrent, setLocatingCurrent] = useState(false);
+  const [locationMessage, setLocationMessage] = useState<{ type: "success" | "error" | "info"; text: string } | null>(null);
+
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [budget, setBudget] = useState("Mid-range");
+  const [customBudget, setCustomBudget] = useState("60000");
   const [accommodation, setAccommodation] = useState("Hotel");
   const [transportation, setTransportation] = useState("Train");
   const [travelInterests, setTravelInterests] = useState<string[]>([]);
   const [specialRequests, setSpecialRequests] = useState("");
+
+  const derivedBudget = deriveBudgetCategory(customBudget);
+  const searchTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+
+  const addDestination = (item: DestinationItem) => {
+    const updated = [...selectedDestinations, item];
+    setSelectedDestinations(updated);
+    setCitiesText(updated.map((d) => d.name).join(", "));
+    setSearchQuery("");
+    setShowSuggestions(false);
+  };
+
+  const removeDestination = (index: number) => {
+    const updated = selectedDestinations.filter((_, idx) => idx !== index);
+    setSelectedDestinations(updated);
+    setCitiesText(updated.map((d) => d.name).join(", "));
+  };
+
+  const handleSearchInputChange = (val: string) => {
+    setSearchQuery(val);
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    if (!val.trim()) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    searchTimeoutRef.current = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const res = await fetch(`/api/locations/search?q=${encodeURIComponent(val.trim())}`);
+        const data = await res.json();
+        if (data.suggestions && Array.isArray(data.suggestions)) {
+          setSuggestions(data.suggestions);
+          setShowSuggestions(true);
+        }
+      } catch (err) {
+        console.error("Search failed:", err);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 250);
+  };
+
+  const handleSelectSuggestion = async (sug: { placeId: string; name: string; mainText: string; secondaryText?: string }) => {
+    try {
+      setIsSearching(true);
+      const res = await fetch("/api/locations/geocode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ placeId: sug.placeId, name: sug.mainText || sug.name }),
+      });
+      const data = await res.json();
+      if (data.location) {
+        addDestination({
+          locationId: data.location.id,
+          googlePlaceId: data.location.googlePlaceId || sug.placeId,
+          name: data.location.name,
+          formattedAddress: data.location.address?.formatted || sug.secondaryText,
+          latitude: data.location.coordinates?.lat,
+          longitude: data.location.coordinates?.lng,
+        });
+      } else {
+        addDestination({
+          googlePlaceId: sug.placeId,
+          name: sug.mainText || sug.name,
+          formattedAddress: sug.secondaryText,
+        });
+      }
+    } catch (e) {
+      addDestination({
+        googlePlaceId: sug.placeId,
+        name: sug.mainText || sug.name,
+      });
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleSearchInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && searchQuery.trim()) {
+      e.preventDefault();
+      if (suggestions.length > 0) {
+        handleSelectSuggestion(suggestions[0]);
+      } else {
+        fetch("/api/locations/geocode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ address: searchQuery.trim() }),
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.location) {
+              addDestination({
+                locationId: data.location.id,
+                googlePlaceId: data.location.googlePlaceId,
+                name: data.location.name,
+                latitude: data.location.coordinates?.lat,
+                longitude: data.location.coordinates?.lng,
+                formattedAddress: data.location.address?.formatted,
+              });
+            } else {
+              addDestination({ name: searchQuery.trim() });
+            }
+          })
+          .catch(() => {
+            addDestination({ name: searchQuery.trim() });
+          });
+      }
+    }
+  };
+
+  const handleUseCurrentLocation = () => {
+    setLocatingCurrent(true);
+    setLocationMessage(null);
+
+    const fallbackDeviceLocation = async () => {
+      try {
+        const res = await fetch("/api/location/current");
+        const data = await res.json();
+        if (data.location) {
+          addDestination({
+            locationId: data.location.id,
+            googlePlaceId: data.location.googlePlaceId,
+            name: data.location.name || "Current Location",
+            latitude: data.location.coordinates?.lat,
+            longitude: data.location.coordinates?.lng,
+            formattedAddress: data.location.address?.formatted,
+          });
+          setLocationMessage({
+            type: "info",
+            text: `📍 Device location: ${data.location.name} (${data.deviceLocation?.accuracyMeters ? Math.round(data.deviceLocation.accuracyMeters / 1000) + 'km radius' : 'Network estimate'})`,
+          });
+        } else {
+          setLocationMessage({
+            type: "error",
+            text: "Unable to detect device location. You can enter destination manually below.",
+          });
+        }
+      } catch (err: any) {
+        setLocationMessage({
+          type: "error",
+          text: "Unable to detect device location. You can enter destination manually below.",
+        });
+      } finally {
+        setLocatingCurrent(false);
+      }
+    };
+
+    if (typeof window !== "undefined" && "geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          try {
+            const { latitude, longitude } = position.coords;
+            const res = await fetch(`/api/locations/reverse-geocode?lat=${latitude}&lng=${longitude}`);
+            const data = await res.json();
+            if (data.location) {
+              addDestination({
+                locationId: data.location.id,
+                googlePlaceId: data.location.googlePlaceId,
+                name: data.location.name,
+                latitude: data.location.coordinates?.lat,
+                longitude: data.location.coordinates?.lng,
+                formattedAddress: data.location.address?.formatted,
+              });
+              setLocationMessage({
+                type: "success",
+                text: `📍 Current location found: ${data.location.name} (${data.location.address?.city || ""}, ${data.location.address?.country || ""})`,
+              });
+            } else {
+              await fallbackDeviceLocation();
+            }
+          } catch (e) {
+            await fallbackDeviceLocation();
+          } finally {
+            setLocatingCurrent(false);
+          }
+        },
+        async (error) => {
+          if (error.code === error.PERMISSION_DENIED) {
+            setLocationMessage({
+              type: "info",
+              text: "Location permission was denied. You can search or type your destination manually below.",
+            });
+            setLocatingCurrent(false);
+          } else {
+            await fallbackDeviceLocation();
+          }
+        },
+        { timeout: 7000, enableHighAccuracy: true }
+      );
+    } else {
+      fallbackDeviceLocation();
+    }
+  };
 
   const generatePlan = async () => {
     setLoading(true);
@@ -108,16 +357,16 @@ export default function LLMPage() {
     setSummary("");
     setDecisionStatus("pending");
 
-
-
     try {
-      const destinations = citiesText
-        .split(",")
-        .map((city) => city.trim())
-        .filter(Boolean);
+      const destinations = selectedDestinations.length > 0
+        ? selectedDestinations.map((d) => d.name)
+        : citiesText
+            .split(",")
+            .map((city) => city.trim())
+            .filter(Boolean);
 
       if (destinations.length === 0) {
-        throw new Error("Please enter at least one destination");
+        throw new Error("Please enter or select at least one destination");
       }
 
       if (!startDate || !endDate) {
@@ -129,11 +378,14 @@ export default function LLMPage() {
         throw new Error("End date must be after start date");
       }
 
+      const numericBudget = Math.max(0, parseInt(customBudget.replace(/[^0-9]/g, ""), 10) || 0);
+      const formattedBudget = `₹${numericBudget.toLocaleString("en-IN")} total budget (Category: ${derivedBudget.category})`;
+
       const payload: TravelDetails = {
         destinations,
         start_date: startDate,
         end_date: endDate,
-        budget,
+        budget: formattedBudget,
         travel_style: travelInterests[0] || "Cultural",
         interests: travelInterests,
         accommodation,
@@ -187,14 +439,21 @@ export default function LLMPage() {
   };
 
   const handleAcceptPlan = () => {
-    if (!plan) return;
+    const numericBudget = Math.max(0, parseInt(customBudget.replace(/[^0-9]/g, ""), 10) || 0);
+    const resolvedDests = selectedDestinations.length > 0
+      ? selectedDestinations.map((d) => d.name)
+      : citiesText.split(",").map((s) => s.trim()).filter(Boolean);
+
     const acceptedData = {
       plan,
       summary,
-      destinations: citiesText.split(",").map((s) => s.trim()).filter(Boolean),
+      destinations: resolvedDests,
+      destinationDetails: selectedDestinations,
       startDate,
       endDate,
-      budget,
+      totalBudget: numericBudget,
+      budget: `₹${numericBudget.toLocaleString("en-IN")}`,
+      budgetCategory: derivedBudget.category,
       accommodation,
       transportation,
       interests: travelInterests,
@@ -225,8 +484,6 @@ export default function LLMPage() {
     }
   };
 
-
-
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="container mx-auto px-4 py-8 max-w-4xl">
@@ -248,17 +505,137 @@ export default function LLMPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
-            {/* Destinations */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Destinations
-              </label>
-              <Input
-                value={citiesText}
-                onChange={(e) => setCitiesText(e.target.value)}
-                placeholder="Enter destination (e.g., Delhi, Agra)"
-              />
-              <p className="text-xs text-gray-500 mt-1">Enter cities separated by commas</p>
+            {/* Google-Backed Destinations & Current Location */}
+            <div className="relative">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                <label className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
+                  <MapPin className="w-4 h-4 text-[#485C11]" />
+                  Destinations
+                </label>
+                <button
+                  type="button"
+                  onClick={handleUseCurrentLocation}
+                  disabled={locatingCurrent}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-[#485C11] hover:text-[#364A0E] bg-[#DFECC6]/50 hover:bg-[#DFECC6]/80 px-2.5 py-1 rounded-full transition-colors cursor-pointer border border-[#8E9C78]/30 shadow-2xs"
+                >
+                  {locatingCurrent ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Locating device...
+                    </>
+                  ) : (
+                    <>
+                      <LocateFixed className="w-3.5 h-3.5" />
+                      Use My Current Location
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Status or notification message for location detection */}
+              {locationMessage && (
+                <div
+                  className={`mb-2.5 text-xs px-3 py-1.5 rounded-lg flex items-center justify-between ${
+                    locationMessage.type === "success"
+                      ? "bg-green-50 text-green-800 border border-green-200"
+                      : locationMessage.type === "error"
+                      ? "bg-red-50 text-red-800 border border-red-200"
+                      : "bg-amber-50 text-amber-900 border border-amber-200"
+                  }`}
+                >
+                  <span>{locationMessage.text}</span>
+                  <button
+                    type="button"
+                    onClick={() => setLocationMessage(null)}
+                    className="ml-2 text-gray-400 hover:text-gray-600 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
+              {/* Selected Destination Chips */}
+              {selectedDestinations.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-2.5">
+                  {selectedDestinations.map((dest, idx) => (
+                    <span
+                      key={dest.locationId || dest.googlePlaceId || `${dest.name}-${idx}`}
+                      className="inline-flex items-center gap-1.5 bg-[#F4F6EE] border border-[#d6dacb] text-[#2f3d0c] text-xs font-medium px-3 py-1 rounded-full shadow-2xs"
+                    >
+                      <MapPin className="w-3 h-3 text-[#485C11]" />
+                      <span>{dest.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeDestination(idx)}
+                        className="text-gray-400 hover:text-red-600 transition-colors ml-0.5 cursor-pointer"
+                        title="Remove destination"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Destination Search Input with Google Places Autocomplete */}
+              <div className="relative">
+                <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <Input
+                  value={searchQuery}
+                  onChange={(e) => handleSearchInputChange(e.target.value)}
+                  onKeyDown={handleSearchInputKeyDown}
+                  onFocus={() => {
+                    if (suggestions.length > 0) setShowSuggestions(true);
+                  }}
+                  placeholder={
+                    selectedDestinations.length > 0
+                      ? "Search to add another stop (e.g. Agra, Jaipur)..."
+                      : "Search destination or city (e.g. Delhi, Gateway of India)..."
+                  }
+                  className="pl-9 pr-8 bg-white"
+                />
+                {isSearching && (
+                  <Loader2 className="w-4 h-4 text-gray-400 animate-spin absolute right-3 top-1/2 -translate-y-1/2" />
+                )}
+              </div>
+
+              {/* Google Places Suggestions Dropdown */}
+              {showSuggestions && suggestions.length > 0 && (
+                <div className="absolute z-20 w-full mt-1 bg-white border border-[#e5e7db] rounded-xl shadow-lg max-h-60 overflow-y-auto">
+                  <div className="px-3 py-1.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider border-b border-gray-100 bg-[#FAFBF8]">
+                    Google Places Suggestions
+                  </div>
+                  {suggestions.map((sug) => (
+                    <button
+                      key={sug.placeId}
+                      type="button"
+                      onClick={() => handleSelectSuggestion(sug)}
+                      className="w-full text-left px-3.5 py-2 hover:bg-[#F4F6EE] transition-colors flex items-start gap-2.5 cursor-pointer border-b border-gray-50 last:border-0"
+                    >
+                      <MapPin className="w-4 h-4 text-[#485C11] shrink-0 mt-0.5" />
+                      <div>
+                        <div className="text-xs font-semibold text-gray-900">
+                          {sug.mainText || sug.name}
+                        </div>
+                        {sug.secondaryText && (
+                          <div className="text-[11px] text-gray-500">
+                            {sug.secondaryText}
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <p className="text-xs text-gray-500 mt-1.5 flex items-center justify-between">
+                <span>Select from Google suggestions or press Enter to add. Multi-city stops supported.</span>
+                {selectedDestinations.length > 1 && (
+                  <span className="text-[#485C11] font-semibold">
+                    {selectedDestinations.length} stops planned
+                  </span>
+                )}
+              </p>
             </div>
 
             {/* Dates */}
@@ -287,25 +664,73 @@ export default function LLMPage() {
               </div>
             </div>
 
-            {/* Budget, Accommodation, and Transportation */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Budget
+            {/* Total Trip Budget Section (Single User-Controlled Budget Input) */}
+            <div className="bg-[#FAFBF8] border border-[#e5e7db] p-4 rounded-2xl space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <label htmlFor="total-trip-budget" className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
+                  <IndianRupee className="w-4 h-4 text-[#485C11]" />
+                  Enter Total Trip Budget (INR)
                 </label>
-                <Select value={budget} onValueChange={setBudget}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {budgetOptions.map((option) => (
-                      <SelectItem key={option} value={option}>
-                        {option}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <span className="text-xs text-[#6b7280]">
+                  Target constraint: {customBudget ? `₹${(parseInt(customBudget.replace(/[^0-9]/g, ""), 10) || 0).toLocaleString("en-IN")}` : "₹0"}
+                </span>
               </div>
+
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                <div className="relative flex-1">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500 font-bold text-sm">₹</span>
+                  <Input
+                    id="total-trip-budget"
+                    type="number"
+                    min="0"
+                    step="1000"
+                    value={customBudget}
+                    onChange={(e) => setCustomBudget(e.target.value)}
+                    placeholder="e.g. 60000"
+                    className="pl-8 text-sm font-semibold bg-white"
+                  />
+                </div>
+
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {[
+                    { label: "₹25K", val: "25000" },
+                    { label: "₹50K", val: "50000" },
+                    { label: "₹75K", val: "75000" },
+                    { label: "₹1 Lakh", val: "100000" },
+                    { label: "₹2 Lakh+", val: "200000" },
+                  ].map((preset) => (
+                    <button
+                      key={preset.val}
+                      type="button"
+                      onClick={() => setCustomBudget(preset.val)}
+                      className={`text-xs px-2.5 py-1.5 rounded-full border transition-all cursor-pointer ${
+                        customBudget === preset.val
+                          ? "bg-[#485C11] text-white border-[#485C11]"
+                          : "bg-white border-[#d6dacb] text-gray-700 hover:border-[#485C11]/50"
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Derived Budget Category Display (Read-Only Dynamic Label) */}
+              <div className="pt-2.5 border-t border-[#e5e7db]/70 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 bg-[#F4F6EE] px-3.5 py-2.5 rounded-xl">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-gray-600">Budget Category:</span>
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#485C11] text-white shadow-xs">
+                    {derivedBudget.category}
+                  </span>
+                </div>
+                <span className="text-xs text-[#556341] font-medium">
+                  {derivedBudget.description}
+                </span>
+              </div>
+            </div>
+
+            {/* Accommodation and Transportation (Separate User Inputs) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Accommodation

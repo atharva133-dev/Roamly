@@ -29,7 +29,9 @@ interface AcceptedTripData {
   destinations: string[];
   startDate: string;
   endDate: string;
+  totalBudget?: number;
   budget: string;
+  budgetCategory?: string;
   accommodation: string;
   transportation: string;
   interests?: string[];
@@ -112,7 +114,7 @@ export function exportItineraryToPDF(trip: AcceptedTripData) {
 
   // Row 1
   doc.text(`Dates: ${trip.startDate || "N/A"} to ${trip.endDate || "N/A"}`, margin + 5, y + 7);
-  doc.text(`Budget Tier: ${trip.budget || "Mid-range"}`, margin + 65, y + 7);
+  doc.text(`Budget: ${trip.budget || (trip.totalBudget ? `₹${trip.totalBudget.toLocaleString("en-IN")}` : "N/A")}${trip.budgetCategory ? ` (${trip.budgetCategory})` : ""}`, margin + 65, y + 7);
   doc.text(`Total Cost Est: ${trip.plan.total_estimated_cost || "N/A"}`, margin + 120, y + 7);
 
   // Row 2

@@ -15,31 +15,171 @@ enum Category {
 
 enum UserRole {
   USER
-  ADMIN
+  GUIDE
+  SUPER_ADMIN
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+  SUSPENDED
+}
+
+enum AvailabilityStatus {
+  AVAILABLE
+  BUSY
+  OFFLINE
+}
+
+enum RequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CANCELLED
+  COMPLETED
 }
 
 model User {
   user_id           String   @id @default(cuid())
-  password_hash     String?
+  clerk_id          String?  @unique
   email             String   @unique
+  password_hash     String?
+  full_name         String?
   role              UserRole @default(USER)
+  profile_completed Boolean  @default(false)
+  profile_photo_url String?
   created_at        DateTime @default(now())
   updated_at        DateTime @updatedAt
-  profile_photo_url String?
 
-  trips   Trip[]
-  reviews Review[]
+  userProfile  UserProfile?
+  guideProfile GuideProfile?
+
+  trips        Trip[]
+  reviews      Review[]
+  sentRequests GuideRequest[] @relation("UserGuideRequests")
 
   @@map("users")
 }
 
+model UserProfile {
+  id              String   @id @default(cuid())
+  user_id         String   @unique
+  user            User     @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+  phone           String?
+  city            String?
+  country         String?
+  travel_style    String? // relaxed, adventure, cultural, etc.
+  budget_currency String   @default("INR")
+  custom_budget   Float? // Exact budget entered by user
+  budget_tier     String? // backpacker, budget, mid-range, luxury
+  interests       String[]
+  dietary_needs   String?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  @@map("user_profiles")
+}
+
+model GuideProfile {
+  id                   String             @id @default(cuid())
+  user_id              String             @unique
+  user                 User               @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+  bio                  String?
+  profile_photo        String?
+  languages            String[]
+  expertise            String[]
+  experience_years     Int                @default(0)
+  hourly_rate          Float?             @default(500)
+  verification_status  VerificationStatus @default(PENDING)
+  availability_status  AvailabilityStatus @default(OFFLINE)
+  current_location_id  String?
+  current_location     Location?          @relation("GuideCurrentLocation", fields: [current_location_id], references: [id])
+  last_location_update DateTime?
+  created_at           DateTime           @default(now())
+  updated_at           DateTime           @updatedAt
+
+  locations GuideLocation[]
+  requests  GuideRequest[]  @relation("GuideReceivedRequests")
+
+  @@index([verification_status, availability_status])
+  @@map("guide_profiles")
+}
+
+model Location {
+  id                String   @id @default(cuid())
+  name              String // e.g. "Gateway of India", "Colaba"
+  city              String // e.g. "Mumbai"
+  state             String?
+  country           String   @default("India")
+  postal_code       String?
+  place_id          String? // Google Maps placeId (legacy)
+  google_place_id   String?  @unique // Google Maps placeId (canonical)
+  formatted_address String?
+  latitude          Float?
+  longitude         Float?
+  type              String? // monument, market, beach, temple, museum, city, attraction
+  is_active         Boolean  @default(true)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  guideLocations GuideLocation[]
+  currentGuides  GuideProfile[]  @relation("GuideCurrentLocation")
+  guideRequests  GuideRequest[]
+  stops          Stop[]
+
+  @@index([city, is_active])
+  @@index([google_place_id])
+  @@map("locations")
+}
+
+model GuideLocation {
+  id             String       @id @default(cuid())
+  guide_id       String
+  guide          GuideProfile @relation(fields: [guide_id], references: [id], onDelete: Cascade)
+  location_id    String
+  location       Location     @relation(fields: [location_id], references: [id], onDelete: Cascade)
+  is_active      Boolean      @default(true)
+  available_from String? // e.g. "09:00"
+  available_to   String? // e.g. "18:00"
+  created_at     DateTime     @default(now())
+
+  @@unique([guide_id, location_id])
+  @@index([location_id, is_active])
+  @@map("guide_locations")
+}
+
+model GuideRequest {
+  id          String        @id @default(cuid())
+  user_id     String
+  user        User          @relation("UserGuideRequests", fields: [user_id], references: [user_id], onDelete: Cascade)
+  guide_id    String
+  guide       GuideProfile  @relation("GuideReceivedRequests", fields: [guide_id], references: [id], onDelete: Cascade)
+  location_id String
+  location    Location      @relation(fields: [location_id], references: [id])
+  tour_id     Int?
+  tour        Trip?         @relation(fields: [tour_id], references: [trip_id], onDelete: SetNull)
+  date        DateTime
+  start_time  String // e.g. "10:00 AM"
+  duration    Int // in hours
+  message     String?
+  total_cost  Float?
+  status      RequestStatus @default(PENDING)
+  created_at  DateTime      @default(now())
+  updated_at  DateTime      @updatedAt
+
+  @@index([guide_id, status])
+  @@index([user_id])
+  @@map("guide_requests")
+}
+
 model Admin {
-  admin_id   Int    @id @default(autoincrement())
-  email      String @unique
+  admin_id   Int     @id @default(autoincrement())
+  email      String  @unique
   password   String
   top_cities String?
   city_id    Int?
-  city       City?  @relation(fields: [city_id], references: [city_id])
+  city       City?   @relation(fields: [city_id], references: [city_id])
 
   trips Trip[] @relation("AdminTrips")
 
@@ -54,13 +194,13 @@ model City {
   image_url   String?
   description String?
 
-  admins Admin[]
+  admins     Admin[]
   // removed trips direct link; trips connect via stops
   activities Activity[]
   stops      Stop[]
 
-  @@map("city")
   @@index([city, state, country])
+  @@map("city")
 }
 
 model Trip {
@@ -76,12 +216,13 @@ model Trip {
   admin_id Int?
   admin    Admin? @relation("AdminTrips", fields: [admin_id], references: [admin_id])
 
-  budgets Budget[]
-  stops   Stop[]
-  reviews Review[]
+  budgets       Budget[]
+  stops         Stop[]
+  reviews       Review[]
+  guideRequests GuideRequest[]
 
-  @@map("trips")
   @@index([user_id])
+  @@map("trips")
 }
 
 model Budget {
@@ -91,8 +232,8 @@ model Budget {
   trip      Trip     @relation(fields: [trip_id], references: [trip_id], onDelete: Cascade)
   category  Category
 
-  @@map("budgets")
   @@index([trip_id])
+  @@map("budgets")
 }
 
 model Activity {
@@ -109,8 +250,8 @@ model Activity {
 
   stopActivities StopActivity[]
 
-  @@map("activities")
   @@index([city_id])
+  @@map("activities")
 }
 
 model Stop {
@@ -119,20 +260,24 @@ model Stop {
   trip_id Int
   trip    Trip @relation(fields: [trip_id], references: [trip_id], onDelete: Cascade)
 
-  city_id Int
-  city    City @relation(fields: [city_id], references: [city_id])
+  city_id Int?
+  city    City? @relation(fields: [city_id], references: [city_id])
+
+  location_id String?
+  location    Location? @relation(fields: [location_id], references: [id], onDelete: SetNull)
 
   // ordering and timing for multi-city itineraries
-  sequence        Int
-  arrival_date    DateTime?
-  departure_date  DateTime?
+  sequence       Int
+  arrival_date   DateTime?
+  departure_date DateTime?
 
   stopActivities StopActivity[]
 
-  @@map("stops")
   @@unique([trip_id, sequence]) // one sequence position per trip
   @@index([trip_id])
   @@index([city_id])
+  @@index([location_id])
+  @@map("stops")
 }
 
 model StopActivity {
@@ -144,9 +289,9 @@ model StopActivity {
   activity Activity @relation(fields: [activity_id], references: [activity_id], onDelete: Cascade)
 
   @@unique([stop_id, activity_id])
-  @@map("stop_activities")
   @@index([stop_id])
   @@index([activity_id])
+  @@map("stop_activities")
 }
 
 model Review {
@@ -160,7 +305,7 @@ model Review {
   user User @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
   trip Trip @relation(fields: [trip_id], references: [trip_id], onDelete: Cascade)
 
-  @@map("reviews")
   @@index([trip_id])
   @@index([user_id])
+  @@map("reviews")
 }

@@ -45,6 +45,9 @@ export function SiteNav() {
             <Link className="hover:text-[#3f520f] transition-colors duration-150" href="/llm">
               Trips
             </Link>
+            <Link className="hover:text-[#3f520f] transition-colors duration-150" href="/guides">
+              Local Guides
+            </Link>
             <Link className="hover:text-[#3f520f] transition-colors duration-150" href="/#itinerary-widget">
               Stays
             </Link>

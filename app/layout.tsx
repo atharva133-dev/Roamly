@@ -5,6 +5,7 @@ import "./globals.css";
 import { ClerkProvider } from '@clerk/nextjs'
 import { SiteNav } from "@/components/site-nav";
 import { PageLoadingTransition } from "@/components/loading-screen";
+import { AIChatbot } from "@/components/AIChatbot";
 import { Suspense } from "react";
 
 const inter = Inter({
@@ -36,6 +37,7 @@ export default function RootLayout({
           </Suspense>
           <SiteNav />
           {children}
+          <AIChatbot />
         </ClerkProvider>
       </body>
     </html>

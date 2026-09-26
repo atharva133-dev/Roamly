@@ -6,7 +6,15 @@ const isPublicRoute = createRouteMatcher([
   "/about",
   "/sign-in(.*)",
   "/sign-up(.*)",
+  "/guides(.*)",
+  "/llm(.*)",
+  "/mapcalendar(.*)",
   "/api/public(.*)",
+  "/api/locations(.*)",
+  "/api/location(.*)",
+  "/api/guides(.*)",
+  "/api/guide-requests(.*)",
+  "/api/setup(.*)",
   "/api/webhooks(.*)",
   "/auth-redirect(.*)"
 ]);
