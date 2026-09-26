@@ -326,5 +326,18 @@ await test("Persistence: agentRouter never persists before validation passes", a
   assert(result.tripId === undefined, "a failed plan must never carry a persisted tripId");
 });
 
+await test("Persistence: a validated plan degrades to persisted:false instead of crashing when the DB is unreachable", async () => {
+  const { persistItinerary } = await import("../server/src/agents/agentRouter.js");
+  const context = { ...validPlanFixtureContext(), user: { id: "test_user" } };
+  // Regression test for the exact crash reported against a real deployment:
+  // DATABASE_URL configured but Postgres unreachable must NOT throw out of
+  // persistItinerary — it must degrade like every other agent.
+  const result = await persistItinerary(context);
+  assert(typeof result.persisted === "boolean", "expected a persisted boolean, not a thrown exception");
+  if (!result.persisted) {
+    assert(typeof result.reason === "string" && result.reason.length > 0, "expected a human-readable reason when not persisted");
+  }
+});
+
 console.log(`\n=== Results: ${passed} passed, ${failed} failed, ${skipped} skipped ===`);
 process.exit(failed > 0 ? 1 : 0);

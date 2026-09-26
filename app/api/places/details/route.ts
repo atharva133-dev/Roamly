@@ -12,7 +12,11 @@ export async function GET(req: Request) {
       );
     }
 
-    const apiKey = process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_API_KEY;
+    // NOTE: GOOGLE_API_KEY is the Gemini/Generative Language key used elsewhere
+    // in this codebase — it is NOT a Maps Platform key and must not be reused
+    // here. GOOGLE_MAPS_SERVER_API_KEY is the shared key name used by every
+    // other Maps integration (server/src/integrations/google/*.js).
+    const apiKey = process.env.GOOGLE_MAPS_SERVER_API_KEY || process.env.GOOGLE_PLACES_API_KEY;
 
     // Mock data for known place IDs when no API key is available
     const mockDetails: Record<string, object> = {

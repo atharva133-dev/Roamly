@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { getAuthenticatedUser } from "@/lib/auth/rbac";
 import { planItinerary } from "@/server/src/agents/agentRouter.js";
 
 const VALID_PACES = ["RELAXED", "MODERATE", "FAST"];
@@ -67,8 +67,15 @@ function validateRequest(body: Partial<ItineraryPlanRequestBody>): string[] {
  * route whitelist (see docs/Roamly_Grounded_Agent_Router_Fixed_Plan.md §0.3).
  */
 export async function POST(req: Request) {
-  const { userId } = await auth();
-  if (!userId) {
+  // Use the resolved Prisma User.user_id (via getAuthenticatedUser), NOT the
+  // raw Clerk session id. Trip.user_id is a foreign key into `users`, and
+  // clerk_id / user_id are NOT guaranteed to be the same value (they only
+  // coincide when the Clerk webhook creates the row first; if this app's own
+  // auto-create-on-first-request path in lib/auth/rbac.ts runs first instead,
+  // user_id is an independently generated cuid). Using the raw Clerk id here
+  // would make prisma.trip.create() fail on a foreign key violation.
+  const authContext = await getAuthenticatedUser();
+  if (!authContext) {
     return NextResponse.json({ success: false, error: { code: "UNAUTHENTICATED", message: "Sign in required" } }, { status: 401 });
   }
 
@@ -104,7 +111,7 @@ export async function POST(req: Request) {
 
   try {
     const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-    const result = await planItinerary({ requestId, user: { id: userId }, tripRequest });
+    const result = await planItinerary({ requestId, user: { id: authContext.userId, role: authContext.role }, tripRequest });
 
     return NextResponse.json(result, { status: result.success ? 200 : 422 });
   } catch (err: unknown) {

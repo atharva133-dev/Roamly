@@ -124,45 +124,60 @@ async function reoptimize(context, errors, attemptNumber) {
   return runAgent(context, validationAgent, "validationAgent", null);
 }
 
-async function persistItinerary(context) {
-  const prisma = await getPrismaClient();
-  if (!prisma) {
-    return { persisted: false, reason: "Database unavailable" };
-  }
-
+/**
+ * Persist the validated plan as Trip/Stop/Budget rows. This runs strictly
+ * after validation PASSED (see the persistence gate in planItinerary below),
+ * but the database itself can still be unreachable at write time — that's an
+ * infra failure, not a grounding failure, so it must degrade the same way
+ * every other agent does (return persisted:false) rather than crash the
+ * whole request and throw away an otherwise-valid, already-validated plan.
+ */
+export async function persistItinerary(context) {
   const { tripRequest, resolvedLocations, budgetAllocations, generatedPlan, user } = context;
 
-  const trip = await prisma.trip.create({
-    data: {
-      user_id: user.id,
-      start_date: new Date(tripRequest.startDate),
-      end_date: new Date(tripRequest.endDate),
-      description: `Trip to ${resolvedLocations.map((l) => l.name).join(", ")}`
+  try {
+    const prisma = await getPrismaClient();
+    if (!prisma) {
+      return { persisted: false, reason: "Database unavailable" };
     }
-  });
 
-  for (let i = 0; i < resolvedLocations.length; i++) {
-    const location = resolvedLocations[i];
-    const daysAtLocation = generatedPlan.days.filter((d) => d.locationId === location.id);
-    const arrivalDate = daysAtLocation[0]?.date || tripRequest.startDate;
-    const departureDate = daysAtLocation[daysAtLocation.length - 1]?.date || tripRequest.endDate;
-
-    await recordTripStop({
-      tripId: trip.trip_id,
-      locationId: location.id,
-      sequence: i,
-      arrivalDate,
-      departureDate
+    const trip = await prisma.trip.create({
+      data: {
+        user_id: user.id,
+        start_date: new Date(tripRequest.startDate),
+        end_date: new Date(tripRequest.endDate),
+        description: `Trip to ${resolvedLocations.map((l) => l.name).join(", ")}`
+      }
     });
-  }
 
-  for (const [category, amount] of Object.entries(budgetAllocations.categories)) {
-    await prisma.budget.create({
-      data: { trip_id: trip.trip_id, amount, category }
-    });
-  }
+    for (let i = 0; i < resolvedLocations.length; i++) {
+      const location = resolvedLocations[i];
+      const daysAtLocation = generatedPlan.days.filter((d) => d.locationId === location.id);
+      const arrivalDate = daysAtLocation[0]?.date || tripRequest.startDate;
+      const departureDate = daysAtLocation[daysAtLocation.length - 1]?.date || tripRequest.endDate;
 
-  return { persisted: true, tripId: trip.trip_id };
+      await recordTripStop({
+        tripId: trip.trip_id,
+        locationId: location.id,
+        sequence: i,
+        arrivalDate,
+        departureDate
+      });
+    }
+
+    for (const [category, amount] of Object.entries(budgetAllocations.categories)) {
+      await prisma.budget.create({
+        data: { trip_id: trip.trip_id, amount, category }
+      });
+    }
+
+    return { persisted: true, tripId: trip.trip_id };
+  } catch (err) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn(`[Agent Router] Persistence failed (${err.message}); returning the validated plan unsaved.`);
+    }
+    return { persisted: false, reason: `Database write failed: ${err.message}` };
+  }
 }
 
 /**
@@ -271,4 +286,4 @@ function buildFailureResponse(context, errors, reOptimizations = 0) {
   };
 }
 
-export default { planItinerary };
+export default { planItinerary, persistItinerary };

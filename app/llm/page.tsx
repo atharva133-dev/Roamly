@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useState } from "react";
+import dynamic from "next/dynamic";
 import { differenceInDays, parseISO, format } from "date-fns";
+import type { DateRange } from "react-day-picker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -14,11 +16,19 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { MultiSelectInterests } from "@/components/ui/multi-select-interests";
 import Link from "next/link";
+
+// react-day-picker touches window/document during measurement — load client-only,
+// matching the pattern already used in app/mapcalendar/page.tsx.
+const Calendar = dynamic(() => import("@/components/ui/calendar").then((mod) => mod.Calendar), {
+  ssr: false,
+  loading: () => <div className="p-6 text-sm text-muted-foreground">Loading calendar…</div>,
+});
 import {
   Plane,
-  Calendar,
+  Calendar as CalendarIcon,
   MapPin,
   IndianRupee,
   Hotel,
@@ -334,6 +344,7 @@ export default function LLMPage() {
 
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [customBudget, setCustomBudget] = useState("60000");
   const [accommodation, setAccommodation] = useState("Hotel");
   const [transportation, setTransportation] = useState("Train");
@@ -346,6 +357,19 @@ export default function LLMPage() {
 
   const derivedBudget = deriveBudgetCategory(customBudget);
   const searchTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+
+  // Derived range object for the Calendar; startDate/endDate ("yyyy-MM-dd"
+  // strings) stay the single source of truth since the rest of the page
+  // (payload building, min= constraints, etc.) already reads them directly.
+  const dateRange: DateRange | undefined = startDate
+    ? { from: parseISO(startDate), to: endDate ? parseISO(endDate) : undefined }
+    : undefined;
+
+  const handleDateRangeSelect = (range: DateRange | undefined) => {
+    setStartDate(range?.from ? format(range.from, "yyyy-MM-dd") : "");
+    setEndDate(range?.to ? format(range.to, "yyyy-MM-dd") : "");
+    if (range?.from && range?.to) setIsDatePickerOpen(false);
+  };
 
   const addDestination = (item: DestinationItem) => {
     const updated = [...selectedDestinations, item];
@@ -803,9 +827,15 @@ export default function LLMPage() {
               {/* Google Places Suggestions Dropdown */}
               {showSuggestions && suggestions.length > 0 && (
                 <div className="absolute z-20 w-full mt-1 bg-white border border-[#e5e7db] rounded-xl shadow-lg max-h-60 overflow-y-auto">
-                  <div className="px-3 py-1.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider border-b border-gray-100 bg-[#FAFBF8]">
-                    Google Places Suggestions
-                  </div>
+                  {suggestions.every((s) => s.placeId?.startsWith("custom_")) ? (
+                    <div className="px-3 py-1.5 text-[11px] font-semibold text-amber-700 uppercase tracking-wider border-b border-gray-100 bg-amber-50">
+                      No Google Places match — free-text entry only (configure GOOGLE_MAPS_SERVER_API_KEY for real search)
+                    </div>
+                  ) : (
+                    <div className="px-3 py-1.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wider border-b border-gray-100 bg-[#FAFBF8]">
+                      Google Places Suggestions
+                    </div>
+                  )}
                   {suggestions.map((sug) => (
                     <button
                       key={sug.placeId}
@@ -839,30 +869,50 @@ export default function LLMPage() {
               </p>
             </div>
 
-            {/* Dates */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Start Date
-                </label>
-                <Input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  min={format(new Date(), "yyyy-MM-dd")}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  End Date
-                </label>
-                <Input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  min={startDate}
-                />
-              </div>
+            {/* Trip Dates */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Trip Dates
+              </label>
+              <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className="w-full flex items-center justify-between gap-2 rounded-md border border-input bg-white px-3 py-2 text-sm shadow-sm transition-colors hover:border-[#8E9C78] focus:outline-none focus:ring-2 focus:ring-[#485C11]/20 focus:border-[#485C11]"
+                  >
+                    <span className="flex items-center gap-2 text-left">
+                      <CalendarIcon className="size-4 text-[#485C11] shrink-0" />
+                      {startDate ? (
+                        <span className="text-gray-900">
+                          {format(parseISO(startDate), "MMM d, yyyy")}
+                          {endDate ? ` – ${format(parseISO(endDate), "MMM d, yyyy")}` : " – Select end date"}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">Select trip dates</span>
+                      )}
+                    </span>
+                    {startDate && endDate && (
+                      <span className="text-xs font-semibold text-[#485C11] bg-[#DFECC6]/50 px-2 py-0.5 rounded-full shrink-0">
+                        {differenceInDays(parseISO(endDate), parseISO(startDate)) + 1} days
+                      </span>
+                    )}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="range"
+                    numberOfMonths={2}
+                    defaultMonth={dateRange?.from}
+                    selected={dateRange}
+                    onSelect={handleDateRangeSelect}
+                    disabled={{ before: new Date() }}
+                    className="rounded-lg"
+                  />
+                </PopoverContent>
+              </Popover>
+              <p className="text-xs text-gray-500 mt-1.5">
+                Pick a start and end date — both months are shown so you can select the full range at once.
+              </p>
             </div>
 
             {/* Total Trip Budget Section (Single User-Controlled Budget Input) */}
@@ -1249,7 +1299,7 @@ export default function LLMPage() {
                     <div className="flex items-center gap-2.5 w-full sm:w-auto">
                       <Link href="/mapcalendar" className="w-full sm:w-auto">
                         <Button className="w-full bg-[#485C11] hover:bg-[#3a4d0d] text-white rounded-full px-6 shadow-sm">
-                          <Calendar className="mr-2 size-4" />
+                          <CalendarIcon className="mr-2 size-4" />
                           View in My Schedule
                           <ArrowRight className="ml-2 size-4" />
                         </Button>

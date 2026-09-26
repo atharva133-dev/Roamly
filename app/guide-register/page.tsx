@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import dynamic from "next/dynamic";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import {
@@ -96,6 +97,16 @@ interface WorkingLocation {
   country: string;
 }
 
+// Leaflet touches window/document — must be loaded client-side only.
+const MiniLocationMap = dynamic(() => import("@/components/MiniLocationMap"), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full flex items-center justify-center text-xs text-[#6b7280]">
+      Loading map…
+    </div>
+  ),
+});
+
 /* ───────────── Main Component ───────────── */
 
 export default function GuideRegistrationPage() {
@@ -152,6 +163,11 @@ export default function GuideRegistrationPage() {
   }, []);
 
   /* ── Phone validation ── */
+  const isPhoneValid = useCallback((value: string) => {
+    const digits = value.replace(/\D/g, "");
+    return digits.length >= 10 && digits.length <= 15;
+  }, []);
+
   const validatePhone = useCallback((value: string) => {
     const digits = value.replace(/\D/g, "");
     if (digits.length === 0) {
@@ -181,11 +197,17 @@ export default function GuideRegistrationPage() {
       setIsSearching(true);
       try {
         const res = await fetch(`/api/places/autocomplete?input=${encodeURIComponent(input)}`);
-        const data = await res.json();
+        if (!res.ok) {
+          console.warn("Places autocomplete responded with status:", res.status);
+          return;
+        }
+        const text = await res.text();
+        if (!text) return;
+        const data = JSON.parse(text);
         setLocationPredictions(data.predictions || []);
         setShowDropdown(true);
-      } catch {
-        console.error("Location search failed");
+      } catch (err) {
+        console.error("Location search network error:", err);
       } finally {
         setIsSearching(false);
       }
@@ -199,7 +221,13 @@ export default function GuideRegistrationPage() {
 
     try {
       const res = await fetch(`/api/places/details?placeId=${prediction.place_id}`);
-      const data = await res.json();
+      if (!res.ok) {
+        console.warn("Place details responded with status:", res.status);
+        return;
+      }
+      const text = await res.text();
+      if (!text) return;
+      const data = JSON.parse(text);
       const result = data.result;
 
       if (result) {
@@ -225,8 +253,8 @@ export default function GuideRegistrationPage() {
           country,
         });
       }
-    } catch {
-      console.error("Failed to fetch place details");
+    } catch (err) {
+      console.error("Failed to fetch place details:", err);
     } finally {
       setIsSearching(false);
     }
@@ -251,7 +279,7 @@ export default function GuideRegistrationPage() {
         case 1:
           return isSignedIn === true;
         case 2:
-          return fullName.trim().length > 0 && validatePhone(phoneNumber);
+          return fullName.trim().length > 0 && isPhoneValid(phoneNumber);
         case 3:
           return selectedLanguages.length > 0;
         case 4:
@@ -264,7 +292,7 @@ export default function GuideRegistrationPage() {
           return true;
       }
     },
-    [isSignedIn, fullName, phoneNumber, selectedLanguages, availableDays, hourlyRate, workingLocation, validatePhone]
+    [isSignedIn, fullName, phoneNumber, selectedLanguages, availableDays, hourlyRate, workingLocation, isPhoneValid]
   );
 
   /* ── Submit ── */
@@ -297,11 +325,21 @@ export default function GuideRegistrationPage() {
           router.push("/guides");
         }, 3000);
       } else {
-        const errData = await res.json();
-        alert(errData.error || "Failed to create guide profile. Please try again.");
+        let errorMsg = "Failed to create guide profile. Please try again.";
+        try {
+          const text = await res.text();
+          if (text) {
+            const errData = JSON.parse(text);
+            if (errData?.error) errorMsg = errData.error;
+          }
+        } catch {
+          // Non-JSON response
+        }
+        alert(errorMsg);
       }
-    } catch {
-      alert("An error occurred. Please check your connection and try again.");
+    } catch (err) {
+      console.error("Guide submission error:", err);
+      alert("Network error: Could not connect to the server (Failed to fetch). Please ensure the Next.js dev server is running on http://localhost:3000 and try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -987,26 +1025,13 @@ export default function GuideRegistrationPage() {
                           </button>
                         </div>
 
-                        {/* Mini Map Preview */}
+                        {/* Mini Map Preview — Leaflet/OpenStreetMap, no API key required */}
                         {workingLocation.latitude && workingLocation.longitude && (
                           <div className="mt-4 rounded-xl overflow-hidden border border-[#d6dacb] h-40 bg-[#e5e7db]">
-                            <img
-                              src={`https://maps.googleapis.com/maps/api/staticmap?center=${workingLocation.latitude},${workingLocation.longitude}&zoom=15&size=600x200&markers=color:green%7C${workingLocation.latitude},${workingLocation.longitude}&key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY || ""}`}
-                              alt="Location map"
-                              className="w-full h-full object-cover"
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).style.display = "none";
-                              }}
+                            <MiniLocationMap
+                              latitude={workingLocation.latitude}
+                              longitude={workingLocation.longitude}
                             />
-                            <div className="w-full h-full flex items-center justify-center text-xs text-[#6b7280]">
-                              <div className="text-center">
-                                <MapPin className="w-6 h-6 text-[#485C11] mx-auto mb-1" />
-                                <p>
-                                  {workingLocation.latitude?.toFixed(4)},{" "}
-                                  {workingLocation.longitude?.toFixed(4)}
-                                </p>
-                              </div>
-                            </div>
                           </div>
                         )}
 
