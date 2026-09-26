@@ -85,12 +85,17 @@ model GuideProfile {
   id                   String             @id @default(cuid())
   user_id              String             @unique
   user                 User               @relation(fields: [user_id], references: [user_id], onDelete: Cascade)
+  phone                String?
   bio                  String?
   profile_photo        String?
   languages            String[]
   expertise            String[]
   experience_years     Int                @default(0)
   hourly_rate          Float?             @default(500)
+  currency             String             @default("INR")
+  available_days       String[]           // e.g. ["Monday", "Tuesday", ...]
+  available_time_from  String?            // e.g. "09:00"
+  available_time_to    String?            // e.g. "18:00"
   verification_status  VerificationStatus @default(PENDING)
   availability_status  AvailabilityStatus @default(OFFLINE)
   current_location_id  String?

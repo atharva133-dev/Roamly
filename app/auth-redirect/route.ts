@@ -23,19 +23,27 @@ export async function GET(req: Request) {
     // Try to find the DB user by email
     let dbUser = await prisma.user.findUnique({
       where: { email },
-      select: { role: true },
+      select: { role: true, profile_completed: true },
     });
 
     // Optionally: create a new user if not found
     if (!dbUser) {
       dbUser = await prisma.user.create({
-        data: { email, role: "USER" }, // Prisma enum is uppercase
-        select: { role: true },
+        data: {
+          email,
+          clerk_id: userId,
+          full_name: [clerkUser?.firstName, clerkUser?.lastName].filter(Boolean).join(" ") || null,
+          role: "USER",
+          profile_photo_url: clerkUser?.imageUrl || null,
+        },
+        select: { role: true, profile_completed: true },
       });
     }
 
     if (dbUser.role === "SUPER_ADMIN") {
       return NextResponse.redirect(new URL("/admin-guides", req.url));
+    } else if (dbUser.role === "GUIDE" && dbUser.profile_completed) {
+      return NextResponse.redirect(new URL("/guides", req.url));
     } else {
       return NextResponse.redirect(new URL("/landing_page", req.url));
     }
