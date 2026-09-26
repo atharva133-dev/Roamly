@@ -1,373 +1,914 @@
-"use client"
+"use client";
 
-import Image from "next/image"
-import { Highlighter } from "@/components/magicui/highlighter";
-import Link from "next/link"
-import { RotatingGlobe } from "@/components/RotatingGlobe";
-import { Smartphone, Earth, IndianRupee, Shield, Sparkles, Check, X, ArrowRight, MapPin, Plane, LucideIcon } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { useState, useRef, useEffect, FC } from 'react';
+import React, { useState } from "react";
+import Image from "next/image";
+import Link from "next/link";
+import {
+  ArrowRight,
+  Plane,
+  Compass,
+  MapPin,
+  Calendar,
+  IndianRupee,
+  Clock,
+  Star,
+  Check,
+  Minus,
+  ChevronRight,
+  SlidersHorizontal,
+  Luggage,
+  Hotel,
+  UtensilsCrossed,
+  Sparkles,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
 
+/* -------------------------------------------------------------------------- */
+/*                               DESTINATIONS                                 */
+/* -------------------------------------------------------------------------- */
 
-// A custom hook to detect if an element is in the viewport
-function useInView<T extends HTMLElement = HTMLDivElement>(options: IntersectionObserverInit = {}) {
-  const [inView, setInView] = useState<boolean>(false);
-  const ref = useRef<T | null>(null);
+type DestinationCategory = "all" | "island" | "cultural" | "culinary";
 
-  useEffect(() => {
-    const observer = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting) {
-        setInView(true);
-        observer.disconnect();
-      }
-    }, options);
-
-    if (ref.current) {
-      observer.observe(ref.current);
-    }
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [options, ref]);
-
-  return [ref, inView] as const;
+interface DestinationItem {
+  id: string;
+  name: string;
+  country: string;
+  category: DestinationCategory;
+  categoryLabel: string;
+  image: string;
+  rating: number;
+  reviewsCount: number;
+  bestSeason: string;
+  budgetEst: string;
+  daysIdeal: string;
+  highlights: string[];
+  tagline: string;
+  dayPreview: { time: string; title: string; desc: string }[];
 }
 
-const Home: FC = () => {
-  return (
-    <div className="font-sans">
-      <main>
-        <HeroSection />
-        <BenefitsSection />
-        <BigPictureSection />
-        <SpecsSection />
-        <TestimonialSection />
-      </main>
-      <SiteFooter />
-    </div>
-  )
+const DESTINATIONS: DestinationItem[] = [
+  {
+    id: "bali",
+    name: "Bali & Nusa Penida",
+    country: "Indonesia",
+    category: "island",
+    categoryLabel: "Coastal & Island",
+    image:
+      "https://images.unsplash.com/photo-1537996194471-e657df975ab4?auto=format&fit=crop&w=1200&q=80",
+    rating: 4.95,
+    reviewsCount: 1420,
+    bestSeason: "April – October",
+    budgetEst: "₹7,000 / day",
+    daysIdeal: "7 days",
+    tagline: "Terraced valleys, coastal cliffs, and morning surf routines.",
+    highlights: ["Tegalalang Terraces", "Uluwatu Cliffs", "Campuhan Ridge", "Kelingking Beach"],
+    dayPreview: [
+      { time: "09:00", title: "Campuhan Ridge Walk", desc: "Morning ridge trek overlooking the lush river valley." },
+      { time: "13:30", title: "Tirta Empul Sacred Springs", desc: "Traditional water sanctuary and temple grounds." },
+      { time: "18:30", title: "Jimbaran Coast Dining", desc: "Open-air seafood dinner along the coastline." },
+    ],
+  },
+  {
+    id: "paris",
+    name: "Paris & Versailles",
+    country: "France",
+    category: "cultural",
+    categoryLabel: "Art & Architecture",
+    image:
+      "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&w=1200&q=80",
+    rating: 4.92,
+    reviewsCount: 2310,
+    bestSeason: "May – September",
+    budgetEst: "₹15,000 / day",
+    daysIdeal: "5 days",
+    tagline: "Historic quarters, private museum hours, and neighborhood bistros.",
+    highlights: ["Musée d'Orsay", "Montmartre Quarters", "Le Marais Bistros", "Sainte-Chapelle"],
+    dayPreview: [
+      { time: "09:30", title: "Le Marais Morning Coffee", desc: "Artisan bakeries and historic townhouse walks." },
+      { time: "14:00", title: "Musée de l'Orangerie", desc: "Monet's Water Lilies in natural light gallery." },
+      { time: "19:30", title: "Seine River Walk & Bistro", desc: "Classic seasonal dining in Saint-Germain." },
+    ],
+  },
+  {
+    id: "tokyo",
+    name: "Tokyo & Kyoto",
+    country: "Japan",
+    category: "culinary",
+    categoryLabel: "Gastronomy & Transit",
+    image:
+      "https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=1200&q=80",
+    rating: 4.98,
+    reviewsCount: 3105,
+    bestSeason: "March – May, Oct – Nov",
+    budgetEst: "₹11,500 / day",
+    daysIdeal: "9 days",
+    tagline: "Hand-rolled soba, tranquil bamboo groves, and neighborhood trains.",
+    highlights: ["Shibuya Sky", "Fushimi Inari Torii", "Tsukiji Outer Market", "Gion Historic Lanes"],
+    dayPreview: [
+      { time: "08:30", title: "Early Fushimi Inari", desc: "Quiet morning ascent through the torii shrines." },
+      { time: "12:30", title: "Handmade Soba in Kanda", desc: "Century-old soba house with fresh buckwheat noodles." },
+      { time: "19:00", title: "Ginza Counter Omakase", desc: "Seasonal chef selection of regional sushi." },
+    ],
+  },
+  {
+    id: "amsterdam",
+    name: "Amsterdam & Haarlem",
+    country: "Netherlands",
+    category: "cultural",
+    categoryLabel: "Canals & Design",
+    image:
+      "https://images.unsplash.com/photo-1512470876302-972faa2aa9a4?auto=format&fit=crop&w=1200&q=80",
+    rating: 4.88,
+    reviewsCount: 940,
+    bestSeason: "April – September",
+    budgetEst: "₹12,500 / day",
+    daysIdeal: "4 days",
+    tagline: "Canal-side architecture, private collections, and quiet cycling paths.",
+    highlights: ["Jordaan Canal Rings", "Rijksmuseum Masters", "Vondelpark Loop", "Nine Streets"],
+    dayPreview: [
+      { time: "09:30", title: "Canal Loop by Bicycle", desc: "Crossing historic 17th-century bridge viewpoints." },
+      { time: "14:00", title: "Rijksmuseum Gallery", desc: "Rembrandt and Vermeer collection walkthrough." },
+      { time: "18:30", title: "De Pijp Courtyard Dinner", desc: "Seasonal local dining and courtyard wine bar." },
+    ],
+  },
+  {
+    id: "amalfi",
+    name: "Amalfi Coast & Rome",
+    country: "Italy",
+    category: "island",
+    categoryLabel: "Mediterranean Coast",
+    image:
+      "https://images.unsplash.com/photo-1533105079780-92b9be482077?auto=format&fit=crop&w=1200&q=80",
+    rating: 4.94,
+    reviewsCount: 1840,
+    bestSeason: "May – October",
+    budgetEst: "₹16,000 / day",
+    daysIdeal: "6 days",
+    tagline: "Limestone cliffs, handmade pasta, and coastal ferries.",
+    highlights: ["Positano Ferry", "Capri Blue Coast", "Path of the Gods", "Trastevere Trattorias"],
+    dayPreview: [
+      { time: "10:00", title: "Coastal Ferry to Positano", desc: "Arriving by sea beneath pastel cliffside villas." },
+      { time: "13:30", title: "Cliffside Terrace Lunch", desc: "Handmade gnocchi, local burrata, and citrus granite." },
+      { time: "17:30", title: "Ravello Garden Viewpoints", desc: "Panoramic vista over the Mediterranean horizon." },
+    ],
+  },
+  {
+    id: "malaysia",
+    name: "Kuala Lumpur & Penang",
+    country: "Malaysia",
+    category: "culinary",
+    categoryLabel: "Street Markets",
+    image:
+      "https://images.unsplash.com/photo-1596422846543-75c6fc197f07?auto=format&fit=crop&w=1200&q=80",
+    rating: 4.89,
+    reviewsCount: 1120,
+    bestSeason: "Year-round",
+    budgetEst: "₹5,500 / day",
+    daysIdeal: "5 days",
+    tagline: "UNESCO heritage colonial quarters and night food alleys.",
+    highlights: ["Jalan Alor Markets", "Batu Caves", "George Town Murals", "Petronas Skyline"],
+    dayPreview: [
+      { time: "09:00", title: "Batu Caves Morning Visit", desc: "Ascending the limestone staircase before midday heat." },
+      { time: "14:00", title: "George Town Architectural Walk", desc: "Preserved shophouse heritage and historic lanes." },
+      { time: "19:30", title: "Jalan Alor Night Tasting", desc: "Claypot noodles, satay skewers, and fresh tropical fruit." },
+    ],
+  },
+];
+
+/* -------------------------------------------------------------------------- */
+/*                          FEATURE COMPARISON DATA                           */
+/* -------------------------------------------------------------------------- */
+
+interface ComparisonRow {
+  feature: string;
+  roamly: string;
+  spreadsheets: string;
+  agencies: string;
 }
 
-const HeroSection: FC = () => {
-  return (
-    <section className="relative overflow-hidden">
+const COMPARISON_ROWS: ComparisonRow[] = [
+  {
+    feature: "Preparation time",
+    roamly: "Under 2 minutes",
+    spreadsheets: "10 to 20 hours of research",
+    agencies: "Multiple days of back-and-forth",
+  },
+  {
+    feature: "Route intelligence",
+    roamly: "Geographic clustering by neighborhood",
+    spreadsheets: "Manual map checking",
+    agencies: "Fixed tourist circuits",
+  },
+  {
+    feature: "Budget estimation",
+    roamly: "Itemized by lodging, transit & meals",
+    spreadsheets: "Manual formulas",
+    agencies: "Opaque package markups",
+  },
+  {
+    feature: "On-trip adjustments",
+    roamly: "Instant re-ordering with one tap",
+    spreadsheets: "Messy re-planning on phone",
+    agencies: "Inflexible cancellation policies",
+  },
+  {
+    feature: "Calendar & map sync",
+    roamly: "Native Apple & Google calendar export",
+    spreadsheets: "Manual calendar entries",
+    agencies: "Static paper or PDF printouts",
+  },
+];
 
+/* -------------------------------------------------------------------------- */
+/*                                REVIEWS                                     */
+/* -------------------------------------------------------------------------- */
 
-      <div className="mx-auto max-w-6xl px-4 pb-0 pt-6 sm:px-6 sm:pt-10">
-        {/* Pill badge */}
-        <div className="flex justify-center mb-6 animate-fade-in">
-          <span className="inline-flex items-center gap-2 rounded-full border border-[#8E9C78]/30 bg-[#DFECC6]/30 px-4 py-1.5 text-sm font-medium text-[#485C11]">
-            <Plane className="size-3.5" />
-            AI-Powered Travel Planning
-          </span>
-        </div>
-
-        <h1 className="text-center font-serif text-[clamp(36px,6vw,80px)] leading-[1] tracking-tight text-foreground animate-fade-in-up">
-          Explore the World,
-          <br />
-          <span className="bg-gradient-to-r from-[#485C11] via-[#6B7F3A] to-[#8E9C78] bg-clip-text text-transparent">
-            Travel Carefree
-          </span>
-        </h1>
-
-        <p className="mx-auto mt-5 max-w-xl text-center text-base sm:text-lg text-muted-foreground animate-fade-in-up-delay">
-          Plan your dream trip in minutes with AI-driven itineraries, smart budgets, and beautiful interactive maps.
-        </p>
-
-        {/* CTA Buttons */}
-        <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3 animate-fade-in-up-delay-2">
-          <Link href="/llm">
-            <Button className="h-12 rounded-full px-8 text-base font-semibold bg-[#485C11] hover:bg-[#3a4d0d] shadow-lg shadow-[#485C11]/20 transition-all duration-300 hover:shadow-xl hover:shadow-[#485C11]/30 hover:-translate-y-0.5">
-              Start Planning
-              <ArrowRight className="ml-2 size-4" />
-            </Button>
-          </Link>
-          <Link href="#benefits">
-            <Button variant="outline" className="h-12 rounded-full px-8 text-base font-semibold border-[#929292]/30 hover:bg-[#DFECC6]/20 transition-all duration-300">
-              Learn More
-            </Button>
-          </Link>
-        </div>
-
-        {/* Animated Roamly Travel Intelligence Globe */}
-        <div className="mt-4 flex justify-center animate-fade-in-up-delay-2">
-          <RotatingGlobe />
-        </div>
-
-      </div>
-    </section>
-  )
+interface ReviewItem {
+  id: string;
+  name: string;
+  role: string;
+  avatar: string;
+  trip: string;
+  quote: string;
 }
 
-// Define the type for each item in the benefits array
-interface BenefitItem {
-  icon: LucideIcon;
-  title: string;
-  body: string;
-  gradient: string;
-}
+const REVIEWS: ReviewItem[] = [
+  {
+    id: "r1",
+    name: "Elena Rostova",
+    role: "Architectural Photographer",
+    avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80",
+    trip: "Kyoto & Tokyo • 10 days",
+    quote:
+      "Roamly grouped neighborhood visits in genuine geographic sequence. I avoided crossing the city twice in a single day, leaving real time to shoot and wander.",
+  },
+  {
+    id: "r2",
+    name: "Marcus Vance",
+    role: "Design Lead",
+    avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80",
+    trip: "Amalfi Coast & Rome • 7 days",
+    quote:
+      "The budget model was accurate to within five percent. It factored in realistic train connections, museum entry, and casual dining without fluff.",
+  },
+  {
+    id: "r3",
+    name: "Liam O'Connor",
+    role: "Software Engineer",
+    avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80",
+    trip: "Bali • 14 days",
+    quote:
+      "Clean, functional, and fast. I asked for mornings open for surfing and afternoons near quiet cafes, and the resulting itinerary was effortless to follow.",
+  },
+];
 
-const BenefitsSection: FC = () => {
-  const items: BenefitItem[] = [
-    { icon: Sparkles, title: "Amplify plans with AI", body: "Unlock relaxing trips with comprehensive plans made by AI, with chatbot and trip summaries.", gradient: "from-amber-500/10 to-orange-500/10" },
-    { icon: Earth, title: "Explore any part of the world", body: "Discover hidden gems and iconic destinations across every continent.", gradient: "from-blue-500/10 to-cyan-500/10" },
-    { icon: IndianRupee, title: "Smart budgeting", body: "Plan your trip to make it happen, all within your budget — with real-time estimates.", gradient: "from-emerald-500/10 to-green-500/10" },
-    { icon: Shield, title: "Your Privacy, our priority", body: "We prioritize your experience with the utmost respect for your privacy.", gradient: "from-violet-500/10 to-purple-500/10" },
-  ]
+/* -------------------------------------------------------------------------- */
+/*                                MAIN PAGE                                   */
+/* -------------------------------------------------------------------------- */
 
-  const [ref, inView] = useInView<HTMLElement>({ threshold: 0.3 });
+export default function HomePage() {
+  const [selectedCategory, setSelectedCategory] = useState<DestinationCategory>("all");
+  const [activeDestination, setActiveDestination] = useState<DestinationItem>(DESTINATIONS[0]);
 
-  return (
-    <section id="benefits" className="relative" ref={ref}>
-      {/* Section background */}
-      <div className="absolute inset-0 -z-10 bg-gradient-to-b from-transparent via-[#f8faf5] to-transparent" />
+  const [heroPrompt, setHeroPrompt] = useState("");
+  const [selectedDuration, setSelectedDuration] = useState("5 Days");
+  const [selectedVibe, setSelectedVibe] = useState("Balanced");
 
-      <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
-        <div className="mx-auto mb-12 max-w-2xl text-center">
-          <Badge variant="secondary" className="mb-4 text-xs font-semibold tracking-wider uppercase">Benefits</Badge>
-          <h2 className="text-pretty text-3xl font-bold sm:text-4xl tracking-tight">
-            {inView ? (
-              <Highlighter action="underline" animationDuration={1200} color="#8E9C78" strokeWidth={3}>
-                Travel Anywhere with Roamly
-              </Highlighter>
-            ) : (
-              "Travel Anywhere with Roamly"
-            )}
-          </h2>
-          <p className="text-muted-foreground mt-4 text-base">Roamly provides real travel insights, without the data overload.</p>
-        </div>
-
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          {items.map((item, i) => (
-            <Card
-              key={item.title}
-              className="group h-full border-[#e8ece0] hover:border-[#8E9C78]/40 transition-all duration-500 hover:shadow-lg hover:shadow-[#8E9C78]/8 hover:-translate-y-1"
-              style={{ animationDelay: `${i * 100}ms` }}
-            >
-              <CardContent className="flex h-full flex-col gap-4 p-6">
-                <div className={`inline-flex size-12 items-center justify-center rounded-xl bg-gradient-to-br ${item.gradient} border border-[#e8ece0] group-hover:scale-110 transition-transform duration-300`}>
-                  <item.icon className="size-5 text-[#485C11]" />
-                </div>
-                <h3 className="text-lg font-bold tracking-tight">{item.title}</h3>
-                <p className="text-muted-foreground text-sm leading-relaxed">{item.body}</p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-    </section>
-  )
-}
-
-const BigPictureSection: FC = () => {
-  const [ref, inView] = useInView<HTMLElement>({ threshold: 0.3 });
-  const bullets: string[] = [
-    "See your whole trip at a glance. No more juggling spreadsheets; get a clear, visual overview of your itinerary.",
-    "Keep everyone on the same page. Easily share your travel plans with your companions so everyone knows what's next.",
-    "Bring your adventure to life. Visualize your journey with interactive maps and timelines that make planning fun.",
-    "Effortlessly manage your budget. Track your spending and see where your money is going with a quick, clear snapshot.",
-  ]
-
-  return (
-    <section className="relative" ref={ref}>
-      <div className="absolute inset-0 -z-10 bg-gradient-to-b from-transparent via-[#f5f8f0] to-transparent" />
-
-      <div className="mx-auto grid max-w-6xl items-center gap-12 px-4 py-20 sm:px-6 md:grid-cols-2">
-        <div className="relative order-last md:order-first">
-          <div className="relative aspect-video w-full overflow-hidden rounded-2xl border border-[#e8ece0] bg-gradient-to-br from-white to-[#f8faf5] shadow-xl shadow-[#485C11]/5 transition-all duration-500 hover:shadow-2xl hover:shadow-[#485C11]/10 group">
-            <img
-              src="/roamly-3d-map.png"
-              alt="Roamly 3D Travel Map"
-              className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
-            />
-            {/* Overlay shimmer */}
-            <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-          </div>
-          {/* Floating accent */}
-          <div className="absolute -bottom-3 -right-3 size-20 rounded-2xl bg-gradient-to-br from-[#DFECC6] to-[#8E9C78]/30 blur-xl -z-10" />
-        </div>
-        <div className="flex flex-col gap-5">
-          <Badge variant="secondary" className="w-fit text-xs font-semibold tracking-wider uppercase">See the Big Picture</Badge>
-          <h3 className="text-pretty text-2xl font-bold sm:text-3xl tracking-tight leading-tight">
-            {inView ? (
-              <Highlighter action="highlight" color="#DFECC6" animationDuration={1200}>
-                Roamly
-              </Highlighter>
-            ) : ("Roamly")}{" "}
-            transforms your travel ideas into clear, vibrant visuals.
-          </h3>
-          <ul className="mt-2 space-y-4">
-            {bullets.map((b, i) => (
-              <li key={i} className="flex items-start gap-4 group/item">
-                <span className="mt-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#485C11] to-[#6B7F3A] text-[11px] font-bold text-white shadow-sm">
-                  {String(i + 1).padStart(2, "0")}
-                </span>
-                <span className="text-sm text-muted-foreground leading-relaxed group-hover/item:text-foreground transition-colors duration-300">{b}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
-    </section>
-  )
-}
-
-// Define the props for the Column component
-interface ColumnProps {
-  title: string;
-  lines: string[];
-  isHighlighted?: boolean;
-}
-
-const SpecsSection: FC = () => {
-  const roamlyFeatures: string[] = [
-    "Quick trip planning",
-    "Smart travel suggestions",
-    "Expense prediction",
-    "Effortless sharing",
-    "Summary generation and Chat Bot support",
-  ]
-  const websurge: string[] = [
-    "Slow trip planning",
-    "Limited recommendations",
-    "Manual booking required",
-    "Basic expense logging",
-    "Sharing can be tricky",
-    "Potential language errors",
-  ]
-  const hyperview: string[] = [
-    "Moderate speeds",
-    "No smart suggestions",
-    "Steep learning curve",
-    "No expense tracking",
-    "Limited sharing options",
-    "Partial language support",
-  ]
-
-  const Column: FC<ColumnProps> = ({ title, lines, isHighlighted }) => (
-    <Card className={`relative overflow-hidden transition-all duration-500 ${
-      isHighlighted
-        ? "border-[#485C11]/30 shadow-xl shadow-[#485C11]/10 scale-[1.02] bg-gradient-to-b from-[#f8faf5] to-white"
-        : "border-[#e8ece0] hover:border-[#929292]/40 hover:shadow-md"
-    }`}>
-      {isHighlighted && (
-        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#485C11] via-[#6B7F3A] to-[#8E9C78]" />
-      )}
-      <CardContent className="p-6">
-        <div className="mb-6 flex items-center gap-3">
-          <div className={`inline-flex size-10 items-center justify-center rounded-xl border ${
-            isHighlighted
-              ? "bg-gradient-to-br from-[#485C11] to-[#6B7F3A] border-transparent"
-              : "bg-muted/60 border-[#e8ece0]"
-          }`}>
-            <Smartphone className={`size-5 ${isHighlighted ? "text-white" : "text-foreground"}`} />
-          </div>
-          <div>
-            <h4 className="text-lg font-bold">{title}</h4>
-            {isHighlighted && (
-              <span className="text-xs font-semibold text-[#485C11] uppercase tracking-wider">Recommended</span>
-            )}
-          </div>
-        </div>
-        <ul className="space-y-3 text-sm">
-          {lines.map((l) => (
-            <li key={l} className="flex items-start gap-3">
-              {isHighlighted ? (
-                <Check className="mt-0.5 size-4 text-[#485C11] shrink-0" />
-              ) : (
-                <X className="mt-0.5 size-4 text-[#929292]/60 shrink-0" />
-              )}
-              <span className={isHighlighted ? "text-foreground font-medium" : "text-muted-foreground"}>{l}</span>
-            </li>
-          ))}
-        </ul>
-      </CardContent>
-    </Card>
-  )
+  const filteredDestinations =
+    selectedCategory === "all"
+      ? DESTINATIONS
+      : DESTINATIONS.filter((d) => d.category === selectedCategory);
 
   return (
-    <section id="specs" className="relative">
-      <div className="absolute inset-0 -z-10 bg-gradient-to-b from-transparent via-[#f8faf5] to-transparent" />
-
-      <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
-        <div className="mx-auto mb-12 max-w-2xl text-center">
-          <Badge variant="secondary" className="mb-4 text-xs font-semibold tracking-wider uppercase">Comparison</Badge>
-          <h2 className="text-pretty text-3xl font-bold sm:text-4xl tracking-tight">Why Choose Roamly?</h2>
-          <p className="text-muted-foreground mt-4 text-base">You need a solution that keeps up. That&apos;s why we developed Roamly — a traveller-friendly approach to get the most out of your trips.</p>
-        </div>
-
-        <div className="grid gap-6 md:grid-cols-3 items-start">
-          <Column title="Roamly" lines={roamlyFeatures} isHighlighted />
-          <Column title="WebSurge" lines={websurge} />
-          <Column title="HyperView" lines={hyperview} />
-        </div>
-      </div>
-    </section>
-  )
-}
-
-const TestimonialSection: FC = () => {
-  const team = ["Mayuri", "Aryan", "Roger", "Mujahid", "Atharva"];
-  return (
-    <section className="relative">
-      <div className="mx-auto max-w-5xl px-4 py-20 sm:px-6">
-        <div className="relative overflow-hidden rounded-3xl border border-[#e8ece0] bg-gradient-to-br from-[#f8faf5] via-white to-[#DFECC6]/20">
-          {/* Decorative background elements */}
-          <div className="absolute inset-0 -z-10">
-            <div className="absolute top-0 right-0 size-64 rounded-full bg-[#DFECC6]/30 blur-3xl" />
-            <div className="absolute bottom-0 left-0 size-48 rounded-full bg-[#8E9C78]/10 blur-3xl" />
-          </div>
-          <div className="flex flex-col items-center gap-8 p-10 sm:p-16 text-center">
-            <div className="inline-flex items-center gap-2 rounded-full bg-[#DFECC6]/40 px-4 py-1.5 text-sm">
-              <Plane className="size-4 text-[#485C11]" />
-              <span className="font-medium text-[#485C11]">Made with ✈️ by</span>
+    <div className="min-h-screen bg-[#FAFBF8] text-[#1a1a1a] selection:bg-[#DFECC6] selection:text-[#485C11] font-sans antialiased">
+      {/* ---------------------------------------------------------------------- */}
+      {/* 1. HERO SECTION                                                        */}
+      {/* ---------------------------------------------------------------------- */}
+      <section className="relative pt-12 pb-16 sm:pt-20 sm:pb-24 border-b border-[#e5e7db]">
+        <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+          <div className="text-center">
+            {/* Pill Badge in Original Roamly Olive/Mint */}
+            <div className="inline-flex items-center gap-2 rounded-full border border-[#8E9C78]/30 bg-[#DFECC6]/40 px-4 py-1.5 text-xs font-medium text-[#485C11]">
+              <Plane className="size-3.5" />
+              <span>AI-Powered Travel Planning</span>
             </div>
-            <div className="flex flex-wrap justify-center gap-3">
-              {team.map((name) => (
-                <span
-                  key={name}
-                  className="rounded-full border border-[#e8ece0] bg-white px-6 py-2.5 text-base font-semibold shadow-sm hover:shadow-md hover:border-[#8E9C78]/40 hover:-translate-y-0.5 transition-all duration-300 cursor-default"
+
+            {/* Headline */}
+            <h1 className="mt-6 text-4xl sm:text-6xl lg:text-7xl font-serif font-bold tracking-tight text-[#1a1a1a] leading-[1.08]">
+              Explore the World,
+              <br />
+              <span className="bg-gradient-to-r from-[#485C11] via-[#6B7F3A] to-[#8E9C78] bg-clip-text text-transparent">
+                Travel Carefree
+              </span>
+            </h1>
+
+            {/* Subheading */}
+            <p className="mx-auto mt-6 max-w-xl text-base sm:text-lg text-[#6b7280] leading-relaxed font-normal">
+              Plan your dream trip in minutes with AI-driven itineraries, smart budgets,
+              and verified neighborhood routes — so you spend less time planning and more time exploring.
+            </p>
+
+            {/* CTAs in Original Olive Tone */}
+            <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
+              <Button
+                asChild
+                className="h-12 rounded-full px-8 text-base font-semibold bg-[#485C11] hover:bg-[#3a4d0d] text-white shadow-lg shadow-[#485C11]/20 hover:shadow-xl hover:shadow-[#485C11]/30 hover:-translate-y-0.5 transition-all duration-300 cursor-pointer"
+              >
+                <Link href="/llm">
+                  Start Planning
+                  <ArrowRight className="ml-2 size-4" />
+                </Link>
+              </Button>
+
+              <Button
+                asChild
+                variant="outline"
+                className="h-12 rounded-full px-8 text-base font-semibold border-[#929292]/30 bg-white hover:bg-[#DFECC6]/30 text-[#1a1a1a] transition-all duration-300"
+              >
+                <a href="#itinerary-widget">
+                  View Sample Itinerary
+                </a>
+              </Button>
+            </div>
+          </div>
+
+          {/* Clean Search Card */}
+          <div className="mx-auto mt-12 max-w-3xl">
+            <div className="rounded-2xl border border-[#e5e7db] bg-white p-3 sm:p-3.5 shadow-xl shadow-[#485C11]/5">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-12 sm:items-center">
+                {/* Destination Input */}
+                <div className="sm:col-span-5 flex items-center gap-3 px-3 py-2 border-b sm:border-b-0 sm:border-r border-[#e5e7db]">
+                  <div className="flex size-8 items-center justify-center rounded-lg bg-[#DFECC6]/40 text-[#485C11] shrink-0">
+                    <MapPin className="size-4" />
+                  </div>
+                  <div className="w-full">
+                    <label className="block text-[10px] uppercase font-bold tracking-wider text-[#6b7280]">
+                      Where to?
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Kyoto, Japan"
+                      value={heroPrompt}
+                      onChange={(e) => setHeroPrompt(e.target.value)}
+                      className="w-full bg-transparent text-sm font-medium text-[#1a1a1a] placeholder:text-[#9ca3af] focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Duration */}
+                <div className="sm:col-span-3 flex items-center gap-3 px-3 py-2 border-b sm:border-b-0 sm:border-r border-[#e5e7db]">
+                  <div className="flex size-8 items-center justify-center rounded-lg bg-[#DFECC6]/40 text-[#485C11] shrink-0">
+                    <Calendar className="size-4" />
+                  </div>
+                  <div className="w-full">
+                    <label className="block text-[10px] uppercase font-bold tracking-wider text-[#6b7280]">
+                      Duration
+                    </label>
+                    <select
+                      value={selectedDuration}
+                      onChange={(e) => setSelectedDuration(e.target.value)}
+                      className="w-full bg-transparent text-sm font-semibold text-[#1a1a1a] focus:outline-none cursor-pointer"
+                    >
+                      <option value="3 Days">3 Days</option>
+                      <option value="5 Days">5 Days</option>
+                      <option value="7 Days">7 Days</option>
+                      <option value="10 Days">10 Days</option>
+                      <option value="2 Weeks">2 Weeks</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Pace */}
+                <div className="sm:col-span-2 flex items-center gap-3 px-3 py-2">
+                  <div className="flex size-8 items-center justify-center rounded-lg bg-[#DFECC6]/40 text-[#485C11] shrink-0">
+                    <SlidersHorizontal className="size-4" />
+                  </div>
+                  <div className="w-full">
+                    <label className="block text-[10px] uppercase font-bold tracking-wider text-[#6b7280]">
+                      Pace
+                    </label>
+                    <select
+                      value={selectedVibe}
+                      onChange={(e) => setSelectedVibe(e.target.value)}
+                      className="w-full bg-transparent text-sm font-semibold text-[#1a1a1a] focus:outline-none cursor-pointer"
+                    >
+                      <option value="Relaxed">Relaxed</option>
+                      <option value="Balanced">Balanced</option>
+                      <option value="Active">Active</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Action button */}
+                <div className="sm:col-span-2">
+                  <Button
+                    asChild
+                    className="w-full h-10 rounded-xl bg-[#485C11] hover:bg-[#3a4d0d] text-white text-xs font-semibold shadow-md shadow-[#485C11]/20 transition-all cursor-pointer"
+                  >
+                    <Link
+                      href={`/llm?destination=${encodeURIComponent(
+                        heroPrompt || "Bali"
+                      )}&duration=${encodeURIComponent(
+                        selectedDuration
+                      )}&vibe=${encodeURIComponent(selectedVibe)}`}
+                    >
+                      Plan Trip
+                      <ArrowRight className="ml-1 size-3.5" />
+                    </Link>
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ---------------------------------------------------------------------- */}
+      {/* 2. CURATED DESTINATIONS GALLERY                                        */}
+      {/* ---------------------------------------------------------------------- */}
+      <section id="destinations" className="py-16 sm:py-24 border-b border-[#e5e7db]">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-8 border-b border-[#e5e7db]">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-[#485C11]">
+                Curated itineraries
+              </p>
+              <h2 className="mt-1 text-2xl sm:text-3xl font-serif font-bold tracking-tight text-[#1a1a1a]">
+                Popular destinations
+              </h2>
+            </div>
+
+            {/* Segmented Control */}
+            <div className="flex items-center gap-1 p-1 rounded-xl border border-[#e5e7db] bg-white w-fit shadow-2xs">
+              {[
+                { key: "all", label: "All" },
+                { key: "island", label: "Coast & Island" },
+                { key: "cultural", label: "Cultural" },
+                { key: "culinary", label: "Culinary" },
+              ].map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => setSelectedCategory(tab.key as DestinationCategory)}
+                  className={`rounded-lg px-3.5 py-1 text-xs font-medium transition-colors cursor-pointer ${selectedCategory === tab.key
+                      ? "bg-[#485C11] text-white shadow-2xs"
+                      : "text-[#6b7280] hover:text-[#1a1a1a] hover:bg-[#DFECC6]/30"
+                    }`}
                 >
-                  {name}
-                </span>
+                  {tab.label}
+                </button>
               ))}
             </div>
-            <p className="text-sm text-muted-foreground max-w-md">
-              Built with passion for travel and powered by cutting-edge AI technology.
-            </p>
+          </div>
+
+          {/* Destinations Grid & Detail Split */}
+          <div className="mt-8 grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            {/* Grid (Left 7 Cols) */}
+            <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {filteredDestinations.map((dest) => {
+                const isSelected = activeDestination.id === dest.id;
+                return (
+                  <div
+                    key={dest.id}
+                    onClick={() => setActiveDestination(dest)}
+                    className={`group cursor-pointer rounded-2xl border transition-all duration-200 overflow-hidden ${isSelected
+                        ? "border-[#485C11] ring-2 ring-[#485C11]/20 bg-white shadow-md"
+                        : "border-[#e5e7db] bg-white hover:border-[#8E9C78]/60 hover:shadow-xs"
+                      }`}
+                  >
+                    <div className="relative aspect-[16/10] w-full overflow-hidden bg-neutral-200">
+                      <Image
+                        src={dest.image}
+                        alt={dest.name}
+                        fill
+                        className="object-cover transition-transform duration-500 group-hover:scale-103"
+                        sizes="(max-width: 640px) 100vw, 350px"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+                      <div className="absolute bottom-3 left-3 right-3 text-white">
+                        <div className="text-sm font-semibold">{dest.name}</div>
+                        <div className="text-xs text-white/80">{dest.country}</div>
+                      </div>
+                    </div>
+
+                    <div className="p-3.5 flex items-center justify-between text-xs text-[#6b7280]">
+                      <div className="flex items-center gap-3">
+                        <span className="text-[#1a1a1a] font-medium">{dest.daysIdeal}</span>
+                        <span>•</span>
+                        <span>{dest.budgetEst}</span>
+                      </div>
+                      <span className={`text-[11px] font-semibold flex items-center ${isSelected ? "text-[#485C11]" : "text-[#6b7280] group-hover:text-[#485C11]"}`}>
+                        {isSelected ? "Selected" : "Details"}
+                        <ChevronRight className="size-3 ml-0.5" />
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Detail Preview (Right 5 Cols) */}
+            <div className="lg:col-span-5 sticky top-24">
+              <div className="rounded-2xl border border-[#e5e7db] bg-white p-6 shadow-md shadow-[#485C11]/5">
+                <div className="flex items-start justify-between pb-4 border-b border-[#e5e7db]">
+                  <div>
+                    <span className="text-xs text-[#485C11] font-semibold">
+                      {activeDestination.categoryLabel}
+                    </span>
+                    <h3 className="mt-1 text-xl font-serif font-bold text-[#1a1a1a]">
+                      {activeDestination.name}
+                    </h3>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-xs text-[#6b7280] block">Est. Daily</span>
+                    <span className="text-sm font-bold text-[#485C11]">
+                      {activeDestination.budgetEst}
+                    </span>
+                  </div>
+                </div>
+
+                <p className="mt-4 text-xs text-[#6b7280] leading-relaxed font-normal">
+                  {activeDestination.tagline}
+                </p>
+
+                {/* Highlights */}
+                <div className="mt-4">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-[#1a1a1a] mb-2">
+                    Key stops
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {activeDestination.highlights.map((h, i) => (
+                      <span
+                        key={i}
+                        className="rounded-md bg-[#FAFBF8] border border-[#e5e7db] px-2.5 py-1 text-xs font-medium text-[#485C11]"
+                      >
+                        ✓ {h}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Day Preview Timeline */}
+                <div className="mt-5 pt-4 border-t border-[#e5e7db]">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-[#1a1a1a] mb-3">
+                    Sample Day Itinerary
+                  </div>
+                  <div className="space-y-3">
+                    {activeDestination.dayPreview.map((item, idx) => (
+                      <div key={idx} className="flex items-start gap-3 text-xs">
+                        <span className="shrink-0 font-mono text-[#485C11] font-bold">
+                          {item.time}
+                        </span>
+                        <div>
+                          <div className="font-semibold text-[#1a1a1a]">{item.title}</div>
+                          <div className="text-[#6b7280] text-[11px] mt-0.5">{item.desc}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Button */}
+                <div className="mt-6 pt-4 border-t border-[#e5e7db]">
+                  <Button
+                    asChild
+                    className="w-full h-11 rounded-xl bg-[#485C11] hover:bg-[#3a4d0d] text-white text-xs font-semibold shadow-sm cursor-pointer"
+                  >
+                    <Link href={`/llm?destination=${encodeURIComponent(activeDestination.name)}`}>
+                      Build {activeDestination.name} Plan
+                      <ArrowRight className="ml-1.5 size-3.5" />
+                    </Link>
+                  </Button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
-    </section>
-  )
-}
+      </section>
 
+      {/* ---------------------------------------------------------------------- */}
+      {/* 3. SAMPLE ITINERARY & BUDGET BREAKDOWN                                 */}
+      {/* ---------------------------------------------------------------------- */}
+      <section id="itinerary-widget" className="py-16 sm:py-24 border-b border-[#e5e7db] bg-gradient-to-b from-transparent via-[#f8faf5] to-transparent">
+        <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+          <div className="text-center max-w-xl mx-auto">
+            <span className="rounded-full bg-[#DFECC6]/50 border border-[#8E9C78]/30 px-3.5 py-1 text-xs font-bold uppercase tracking-wider text-[#485C11]">
+              Interactive preview
+            </span>
+            <h2 className="mt-3 text-2xl sm:text-3xl font-serif font-bold tracking-tight text-[#1a1a1a]">
+              Structured daily itineraries
+            </h2>
+            <p className="mt-2 text-sm text-[#6b7280] font-normal">
+              Every route automatically clusters sights by neighborhood to keep transit minimal.
+            </p>
+          </div>
 
-const SiteFooter: FC = () => {
-  return (
-    <footer className="border-t border-[#e8ece0]">
-      <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-10 sm:px-6 md:flex-row md:items-center md:justify-between">
-        <div className="flex items-center gap-2.5">
-          <span className="inline-flex size-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#485C11] to-[#6B7F3A]">
-            <Sparkles className="size-4 text-white" />
-          </span>
-          <span className="font-bold text-lg">Roamly</span>
+          <div className="mt-10 rounded-2xl border border-[#e5e7db] bg-white overflow-hidden shadow-lg shadow-[#485C11]/5">
+            {/* Header */}
+            <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b border-[#e5e7db] bg-[#FAFBF8]">
+              <div>
+                <div className="text-sm font-bold text-[#1a1a1a]">
+                  Tokyo: Culinary & Traditional Districts
+                </div>
+                <div className="text-xs text-[#6b7280] mt-0.5">
+                  Day 2 • Asakusa to Akihabara • Walking score: 94/100
+                </div>
+              </div>
+              <div className="text-xs font-bold text-[#485C11]">
+                Est. Day Total: ~₹4,500
+              </div>
+            </div>
+
+            {/* Split */}
+            <div className="grid grid-cols-1 md:grid-cols-12 divide-y md:divide-y-0 md:divide-x divide-[#e5e7db]">
+              {/* Timeline (7 cols) */}
+              <div className="md:col-span-7 p-6 space-y-5">
+                <div className="flex items-start gap-4">
+                  <span className="font-mono text-xs text-[#485C11] font-bold shrink-0 mt-0.5">09:00</span>
+                  <div>
+                    <div className="text-sm font-semibold text-[#1a1a1a]">Senso-ji Temple & Nakamise</div>
+                    <div className="text-xs text-[#6b7280] mt-0.5">
+                      Early morning visit before crowds. Historic temple grounds and artisan tea stalls.
+                    </div>
+                    <div className="mt-2 flex items-center gap-3 text-[11px] text-[#6b7280]">
+                      <span>Free admission</span>
+                      <span>•</span>
+                      <span>1.5 hours</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 pl-12 text-[11px] text-[#6b7280]">
+                  <span className="size-1 rounded-full bg-[#8E9C78]" />
+                  <span>12-minute Ginza Line transit to Kanda</span>
+                </div>
+
+                <div className="flex items-start gap-4">
+                  <span className="font-mono text-xs text-[#485C11] font-bold shrink-0 mt-0.5">12:30</span>
+                  <div>
+                    <div className="text-sm font-semibold text-[#1a1a1a]">Kanda Matsuya Soba</div>
+                    <div className="text-xs text-[#6b7280] mt-0.5">
+                      Historic 1884 soba house. Fresh hand-rolled buckwheat noodles with duck broth.
+                    </div>
+                    <div className="mt-2 flex items-center gap-3 text-[11px] text-[#6b7280]">
+                      <span>~₹1,200 per person</span>
+                      <span>•</span>
+                      <span>1 hour</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 pl-12 text-[11px] text-[#6b7280]">
+                  <span className="size-1 rounded-full bg-[#8E9C78]" />
+                  <span>8-minute walk to Akihabara electric district</span>
+                </div>
+
+                <div className="flex items-start gap-4">
+                  <span className="font-mono text-xs text-[#485C11] font-bold shrink-0 mt-0.5">17:30</span>
+                  <div>
+                    <div className="text-sm font-semibold text-[#1a1a1a]">Kanda River Walk at Dusk</div>
+                    <div className="text-xs text-[#6b7280] mt-0.5">
+                      Canal bridge viewpoints, vintage arcades, and evening photography.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Budget breakdown (5 cols) */}
+              <div className="md:col-span-5 p-6 flex flex-col justify-between bg-[#FAFBF8]">
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-wider text-[#1a1a1a] mb-4">
+                    Trip Cost Breakdown (7 Days)
+                  </div>
+
+                  <div className="space-y-3.5">
+                    <div>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-[#6b7280]">Lodging (6 nights)</span>
+                        <span className="text-[#1a1a1a] font-bold">₹60,000</span>
+                      </div>
+                      <div className="h-1.5 w-full rounded-full bg-[#e5e7db] overflow-hidden">
+                        <div className="h-full bg-[#485C11] rounded-full" style={{ width: "48%" }} />
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-[#6b7280]">Dining & Street Food</span>
+                        <span className="text-[#1a1a1a] font-bold">₹35,000</span>
+                      </div>
+                      <div className="h-1.5 w-full rounded-full bg-[#e5e7db] overflow-hidden">
+                        <div className="h-full bg-[#6B7F3A] rounded-full" style={{ width: "28%" }} />
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-[#6b7280]">Activities & Passes</span>
+                        <span className="text-[#1a1a1a] font-bold">₹20,000</span>
+                      </div>
+                      <div className="h-1.5 w-full rounded-full bg-[#e5e7db] overflow-hidden">
+                        <div className="h-full bg-[#8E9C78] rounded-full" style={{ width: "16%" }} />
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-[#6b7280]">Local Transit</span>
+                        <span className="text-[#1a1a1a] font-bold">₹8,500</span>
+                      </div>
+                      <div className="h-1.5 w-full rounded-full bg-[#e5e7db] overflow-hidden">
+                        <div className="h-full bg-[#DFECC6] rounded-full" style={{ width: "8%" }} />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 pt-4 border-t border-[#e5e7db] flex items-baseline justify-between">
+                    <span className="text-xs text-[#6b7280]">Total Estimated</span>
+                    <span className="text-lg font-bold text-[#485C11]">₹1,23,500</span>
+                  </div>
+                </div>
+
+                <div className="mt-6 pt-4 border-t border-[#e5e7db]">
+                  <Button
+                    asChild
+                    variant="outline"
+                    className="w-full h-9 rounded-lg border-[#e5e7db] hover:bg-[#DFECC6]/30 text-xs font-semibold text-[#485C11]"
+                  >
+                    <Link href="/mapcalendar">
+                      Open Schedule View
+                      <ArrowRight className="ml-1.5 size-3.5" />
+                    </Link>
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-        <nav className="flex flex-wrap items-center gap-6 text-sm text-muted-foreground">
-          <a href="#benefits" className="hover:text-foreground transition-colors duration-300">Benefits</a>
-          <a href="#specs" className="hover:text-foreground transition-colors duration-300">Specifications</a>
-          <a href="#howto" className="hover:text-foreground transition-colors duration-300">How-to</a>
-          <a href="#contact" className="hover:text-foreground transition-colors duration-300">Contact Us</a>
-        </nav>
-        <p className="text-xs text-muted-foreground">
-          © {new Date().getFullYear()} Roamly. All rights reserved.
-        </p>
-      </div>
-    </footer>
-  )
-}
+      </section>
 
-export default Home;
+      {/* ---------------------------------------------------------------------- */}
+      {/* 4. FEATURE COMPARISON                                                  */}
+      {/* ---------------------------------------------------------------------- */}
+      <section id="comparison" className="py-16 sm:py-24 border-b border-[#e5e7db]">
+        <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+          <div className="text-center max-w-xl mx-auto mb-10">
+            <span className="rounded-full bg-[#DFECC6]/50 border border-[#8E9C78]/30 px-3.5 py-1 text-xs font-bold uppercase tracking-wider text-[#485C11]">
+              Comparison
+            </span>
+            <h2 className="mt-3 text-2xl sm:text-3xl font-serif font-bold tracking-tight text-[#1a1a1a]">
+              Why travelers choose Roamly
+            </h2>
+          </div>
+
+          <div className="rounded-2xl border border-[#e5e7db] bg-white overflow-x-auto shadow-sm">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="border-b border-[#e5e7db] text-[#6b7280] uppercase tracking-wider text-[11px] bg-[#FAFBF8]">
+                  <th className="py-4 px-5 font-semibold w-1/3">Feature</th>
+                  <th className="py-4 px-5 font-bold text-[#485C11] bg-[#DFECC6]/25 border-x border-[#8E9C78]/20">Roamly</th>
+                  <th className="py-4 px-5 font-medium">Spreadsheets & Tabs</th>
+                  <th className="py-4 px-5 font-medium">Travel Agencies</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#e5e7db] text-[#1a1a1a]">
+                {COMPARISON_ROWS.map((row, i) => (
+                  <tr key={i} className="hover:bg-[#FAFBF8] transition-colors">
+                    <td className="py-3.5 px-5 font-medium">{row.feature}</td>
+                    <td className="py-3.5 px-5 font-semibold text-[#485C11] bg-[#DFECC6]/15 border-x border-[#8E9C78]/20">
+                      <div className="flex items-center gap-1.5">
+                        <Check className="size-3.5 text-[#485C11] shrink-0" />
+                        <span>{row.roamly}</span>
+                      </div>
+                    </td>
+                    <td className="py-3.5 px-5 text-[#6b7280]">
+                      <div className="flex items-center gap-1.5">
+                        <Minus className="size-3.5 text-[#9ca3af] shrink-0" />
+                        <span>{row.spreadsheets}</span>
+                      </div>
+                    </td>
+                    <td className="py-3.5 px-5 text-[#6b7280]">
+                      <div className="flex items-center gap-1.5">
+                        <Minus className="size-3.5 text-[#9ca3af] shrink-0" />
+                        <span>{row.agencies}</span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      {/* ---------------------------------------------------------------------- */}
+      {/* 5. REVIEWS                                                             */}
+      {/* ---------------------------------------------------------------------- */}
+      <section className="py-16 sm:py-24 border-b border-[#e5e7db] bg-gradient-to-b from-transparent via-[#f8faf5] to-transparent">
+        <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+          <div className="text-center max-w-xl mx-auto mb-10">
+            <span className="rounded-full bg-[#DFECC6]/50 border border-[#8E9C78]/30 px-3.5 py-1 text-xs font-bold uppercase tracking-wider text-[#485C11]">
+              Community feedback
+            </span>
+            <h2 className="mt-3 text-2xl sm:text-3xl font-serif font-bold tracking-tight text-[#1a1a1a]">
+              Verified traveler experiences
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {REVIEWS.map((rev) => (
+              <div
+                key={rev.id}
+                className="flex flex-col justify-between rounded-2xl border border-[#e5e7db] bg-white p-5 shadow-xs"
+              >
+                <div>
+                  <div className="text-xs text-[#485C11] font-semibold mb-3">
+                    {rev.trip}
+                  </div>
+                  <p className="text-xs text-[#1a1a1a] leading-relaxed font-normal">
+                    &ldquo;{rev.quote}&rdquo;
+                  </p>
+                </div>
+
+                <div className="mt-6 pt-4 border-t border-[#e5e7db] flex items-center gap-3">
+                  <div className="relative size-8 rounded-full overflow-hidden bg-neutral-200">
+                    <Image
+                      src={rev.avatar}
+                      alt={rev.name}
+                      fill
+                      className="object-cover"
+                    />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-[#1a1a1a]">{rev.name}</div>
+                    <div className="text-[11px] text-[#6b7280]">{rev.role}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ---------------------------------------------------------------------- */}
+      {/* 6. CALL TO ACTION                                                      */}
+      {/* ---------------------------------------------------------------------- */}
+      <section className="py-16 sm:py-20 border-b border-[#e5e7db]">
+        <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
+          <div className="rounded-3xl border border-[#e8ece0] bg-gradient-to-br from-[#f8faf5] via-white to-[#DFECC6]/30 p-10 sm:p-14 text-center">
+            <h2 className="text-3xl sm:text-4xl font-serif font-bold tracking-tight text-[#1a1a1a]">
+              Plan your next journey in minutes
+            </h2>
+            <p className="mt-3 text-sm text-[#6b7280] max-w-md mx-auto">
+              Free forever plan available. No card required. Export to calendar whenever you are ready.
+            </p>
+
+            <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
+              <Button
+                asChild
+                className="h-11 rounded-full px-7 text-sm font-semibold bg-[#485C11] hover:bg-[#3a4d0d] text-white shadow-md shadow-[#485C11]/20 hover:shadow-lg transition-all duration-200 cursor-pointer"
+              >
+                <Link href="/llm">
+                  Start Planning Free
+                  <ArrowRight className="ml-2 size-4" />
+                </Link>
+              </Button>
+
+              <Button
+                asChild
+                variant="outline"
+                className="h-11 rounded-full px-7 text-sm font-semibold border-[#e5e7db] bg-white hover:bg-[#DFECC6]/30 text-[#1a1a1a] transition-all duration-200"
+              >
+                <Link href="/community">
+                  Browse Community Trips
+                </Link>
+              </Button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ---------------------------------------------------------------------- */}
+      {/* 7. FOOTER                                                              */}
+      {/* ---------------------------------------------------------------------- */}
+      <footer className="border-t border-[#e5e7db] bg-white py-12 text-xs text-[#6b7280]">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-base text-[#1a1a1a]">Roamly</span>
+            <span>•</span>
+            <span>AI Travel Itinerary Platform</span>
+          </div>
+
+          <div className="flex items-center gap-6 text-[#6b7280]">
+            <Link href="/llm" className="hover:text-[#485C11] transition-colors">Planner</Link>
+            <Link href="/mapcalendar" className="hover:text-[#485C11] transition-colors">Schedule</Link>
+            <Link href="/community" className="hover:text-[#485C11] transition-colors">Community</Link>
+          </div>
+
+          <div>
+            © {new Date().getFullYear()} Roamly Technologies.
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+}

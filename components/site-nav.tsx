@@ -32,16 +32,16 @@ export function SiteNav() {
             <span className="inline-flex size-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#485C11] to-[#6B7F3A] shadow-sm group-hover:shadow-md transition-shadow duration-300">
               <Sparkles className="size-4 text-white" />
             </span>
-            <span className="tracking-tight text-foreground">Roamly</span>
+            <span className="tracking-tight text-foreground font-serif">Roamly</span>
           </Link>
 
           {/* Desktop — Signed-out navigation */}
           <SignedOut>
             <nav className="hidden md:flex items-center gap-6 lg:gap-8 text-sm font-medium">
-              <Link className="text-muted-foreground hover:text-foreground transition-colors duration-300" href="#benefits">Benefits</Link>
-              <Link className="text-muted-foreground hover:text-foreground transition-colors duration-300" href="#specs">Specifications</Link>
-              <Link className="text-muted-foreground hover:text-foreground transition-colors duration-300" href="#howto">How-to</Link>
-              <Link className="text-muted-foreground hover:text-foreground transition-colors duration-300" href="#contact">Contact Us</Link>
+              <Link className="text-muted-foreground hover:text-[#485C11] transition-colors duration-200" href="/#destinations">Destinations</Link>
+              <Link className="text-muted-foreground hover:text-[#485C11] transition-colors duration-200" href="/#itinerary-widget">Preview</Link>
+              <Link className="text-muted-foreground hover:text-[#485C11] transition-colors duration-200" href="/#comparison">Why Roamly</Link>
+              <Link className="text-muted-foreground hover:text-[#485C11] transition-colors duration-200" href="/community">Community</Link>
             </nav>
           </SignedOut>
 
@@ -74,7 +74,7 @@ export function SiteNav() {
             {/* Auth buttons (always visible) */}
             <SignedOut>
               <Button
-                className="h-9 rounded-full px-5 text-sm font-semibold bg-[#485C11] hover:bg-[#3a4d0d] text-white shadow-sm hover:shadow-md transition-all duration-300"
+                className="h-9 rounded-full px-5 text-sm font-semibold bg-[#485C11] hover:bg-[#3a4d0d] text-white shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer"
                 onClick={() => openSignIn({ afterSignInUrl: `${window.location.origin}/auth-redirect` })}
               >
                 Login
@@ -92,7 +92,7 @@ export function SiteNav() {
 
             {/* Hamburger — mobile toggle */}
             <button
-              className="md:hidden flex items-center justify-center size-9 rounded-lg hover:bg-[#e5e7db]/60 transition-colors duration-200"
+              className="md:hidden flex items-center justify-center size-9 rounded-lg hover:bg-[#e5e7db]/60 text-foreground transition-colors duration-200"
               onClick={() => setMobileOpen(prev => !prev)}
               aria-label="Toggle menu"
             >
@@ -107,7 +107,7 @@ export function SiteNav() {
             mobileOpen ? "max-h-96 opacity-100 border-t border-[#e5e7db]/80" : "max-h-0 opacity-0"
           }`}
         >
-          <div className="bg-background/95 backdrop-blur-xl px-4 py-3 flex flex-col gap-1">
+          <div className="bg-background/95 backdrop-blur-xl px-4 py-3 flex flex-col gap-1 border-b border-[#e5e7db]/80">
 
             {/* Signed-in mobile top links */}
             <SignedIn>
@@ -134,10 +134,10 @@ export function SiteNav() {
 
             {/* Signed-out mobile links */}
             <SignedOut>
-              <Link href="#benefits" onClick={closeMobile} className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-[#e5e7db]/40 transition-all duration-200">Benefits</Link>
-              <Link href="#specs" onClick={closeMobile} className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-[#e5e7db]/40 transition-all duration-200">Specifications</Link>
-              <Link href="#howto" onClick={closeMobile} className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-[#e5e7db]/40 transition-all duration-200">How-to</Link>
-              <Link href="#contact" onClick={closeMobile} className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-[#e5e7db]/40 transition-all duration-200">Contact Us</Link>
+              <Link href="/#destinations" onClick={closeMobile} className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-[#e5e7db]/40 transition-all duration-200">Destinations</Link>
+              <Link href="/#itinerary-widget" onClick={closeMobile} className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-[#e5e7db]/40 transition-all duration-200">Preview</Link>
+              <Link href="/#comparison" onClick={closeMobile} className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-[#e5e7db]/40 transition-all duration-200">Why Roamly</Link>
+              <Link href="/community" onClick={closeMobile} className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-[#e5e7db]/40 transition-all duration-200">Community</Link>
             </SignedOut>
           </div>
         </div>
