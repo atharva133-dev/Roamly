@@ -304,7 +304,77 @@ export default function HomePage() {
           <div className="absolute bottom-0 inset-x-0 h-48 bg-gradient-to-t from-[#FAFBF8] via-[#FAFBF8]/85 to-transparent" />
         </div>
 
+        {/* Floating Bali Destination Card (Top Right over mountains, matching image) */}
+        <div className="hidden lg:block absolute right-8 xl:right-16 top-8 xl:top-12 z-20 w-72 bg-white/95 backdrop-blur-md rounded-2xl p-4 shadow-xl border border-white/80 animate-slide-in-right">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="flex size-8 items-center justify-center rounded-full bg-[#DFECC6] text-[#38480e]">
+                <MapPin className="size-4" />
+              </div>
+              <div>
+                <div className="text-sm font-bold text-[#1a1a1a]">Bali, Indonesia</div>
+                <div className="text-xs text-[#6b7280]">7 Days • ₹32,999</div>
+              </div>
+            </div>
+            <Link
+              href="/llm?destination=Bali"
+              className="flex size-7 items-center justify-center rounded-full bg-[#FAFBF8] border border-[#e5e7db] text-[#1a1a1a] hover:bg-[#DFECC6] hover:text-[#38480e] transition-colors"
+            >
+              <ArrowRight className="size-3.5" />
+            </Link>
+          </div>
+          <div className="grid grid-cols-3 gap-1.5">
+            <div className="relative aspect-[4/3] rounded-lg overflow-hidden bg-neutral-200">
+              <Image
+                src="https://images.unsplash.com/photo-1537996194471-e657df975ab4?auto=format&fit=crop&w=200&q=80"
+                alt="Bali temple"
+                fill
+                className="object-cover"
+                sizes="80px"
+              />
+            </div>
+            <div className="relative aspect-[4/3] rounded-lg overflow-hidden bg-neutral-200">
+              <Image
+                src="https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=200&q=80"
+                alt="Sunset coast"
+                fill
+                className="object-cover"
+                sizes="80px"
+              />
+            </div>
+            <div className="relative aspect-[4/3] rounded-lg overflow-hidden bg-neutral-200">
+              <Image
+                src="https://images.unsplash.com/photo-1544644181-1484b3fdfc62?auto=format&fit=crop&w=200&q=80"
+                alt="Tropical resort"
+                fill
+                className="object-cover"
+                sizes="80px"
+              />
+            </div>
+          </div>
+        </div>
 
+        {/* Floating "Plan with AI" Feature Card (Below Bali card, matching image) */}
+        <div className="hidden lg:block absolute right-8 xl:right-16 top-64 xl:top-72 z-20 w-64 bg-white/95 backdrop-blur-md rounded-2xl p-4 shadow-xl border border-white/80 animate-slide-in-right-delay">
+          <div className="flex items-center gap-2 mb-3">
+            <Sparkles className="size-4 text-[#38480e]" />
+            <span className="text-sm font-bold text-[#1a1a1a]">Plan with AI</span>
+          </div>
+          <div className="space-y-2 text-xs">
+            {[
+              "Smart itineraries",
+              "Budget planning",
+              "Local recommendations",
+            ].map((item) => (
+              <div key={item} className="flex items-center gap-2">
+                <div className="flex size-4 items-center justify-center rounded-full bg-[#DFECC6] text-[#38480e] shrink-0">
+                  <Check className="size-2.5 stroke-[3]" />
+                </div>
+                <span className="font-medium text-[#2d3129]">{item}</span>
+              </div>
+            ))}
+          </div>
+        </div>
 
         {/* ===== HERO UPPER AREA (Left Typography & Actions) ===== */}
         <div className="relative z-10 w-full px-6 sm:px-10 lg:px-16 xl:px-20 pt-8 sm:pt-14 pb-4">
@@ -385,7 +455,7 @@ export default function HomePage() {
           <div className="w-full max-w-[1240px] mx-auto px-4 sm:px-6 lg:px-8">
             <div className="bg-white/95 backdrop-blur-xl rounded-3xl md:rounded-full border border-white/80 shadow-2xl p-2.5 sm:p-3">
               <div className="grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-0 md:items-center">
-                
+
                 {/* 1. Where to? */}
                 <div className="md:col-span-3 flex items-center gap-3.5 px-4 py-2.5 border-b md:border-b-0 md:border-r border-[#e5e7db]">
                   <div className="flex size-9 items-center justify-center rounded-full bg-[#DFECC6]/70 text-[#38480e] shrink-0">
@@ -493,11 +563,11 @@ export default function HomePage() {
           {/* Stats Badges Row (Below Search Bar across full width) */}
           <div className="w-full max-w-[1240px] mx-auto px-6 sm:px-8 pt-5 pb-8">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 items-center">
-              
+
               {/* 50K+ */}
               <div className="flex items-center gap-3">
                 <div className="flex size-10 items-center justify-center rounded-full bg-[#DFECC6]/60 text-[#38480e] shrink-0">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/></svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20" /></svg>
                 </div>
                 <div>
                   <div className="text-sm sm:text-base font-bold text-[#1a1a1a] leading-tight">50K+</div>
@@ -519,7 +589,7 @@ export default function HomePage() {
               {/* 100% */}
               <div className="flex items-center gap-3">
                 <div className="flex size-10 items-center justify-center rounded-full bg-[#DFECC6]/60 text-[#38480e] shrink-0">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>
                 </div>
                 <div>
                   <div className="text-sm sm:text-base font-bold text-[#1a1a1a] leading-tight">100%</div>
@@ -530,7 +600,7 @@ export default function HomePage() {
               {/* Lower Costs */}
               <div className="flex items-center gap-3">
                 <div className="flex size-10 items-center justify-center rounded-full bg-[#DFECC6]/60 text-[#38480e] shrink-0">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a10 10 0 0 1 10 10c0 5.5-4.5 10-10 10S2 17.5 2 12c0-3 1.5-6 4-7.5"/><path d="M7 14c2-4 7-6 10-6"/></svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a10 10 0 0 1 10 10c0 5.5-4.5 10-10 10S2 17.5 2 12c0-3 1.5-6 4-7.5" /><path d="M7 14c2-4 7-6 10-6" /></svg>
                 </div>
                 <div>
                   <div className="text-sm sm:text-base font-bold text-[#1a1a1a] leading-tight">Lower Costs</div>
@@ -1032,3 +1102,4 @@ export default function HomePage() {
     </div>
   );
 }
+
