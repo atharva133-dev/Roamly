@@ -218,9 +218,15 @@ function searchFallbackPlaces(query) {
     name: p.name,
     mainText: p.mainText,
     secondaryText: p.secondaryText,
+    formattedAddress: p.address || p.secondaryText || "",
     latitude: p.latitude,
     longitude: p.longitude,
-    types: p.types || [p.primaryType]
+    primaryType: p.primaryType || (p.types && p.types[0]) || "point_of_interest",
+    types: p.types || [p.primaryType],
+    rating: p.rating,
+    userRatingCount: p.userRatingCount,
+    regularOpeningHours: p.regularOpeningHours || null,
+    photos: p.photos || []
   }));
 }
 
@@ -336,7 +342,7 @@ export async function textSearchPlaces(query, options = {}) {
   }
 
   const endpoint = "https://places.googleapis.com/v1/places:searchText";
-  const fieldMask = "places.id,places.displayName,places.formattedAddress,places.location,places.types,places.rating,places.userRatingCount,places.primaryType";
+  const fieldMask = "places.id,places.displayName,places.formattedAddress,places.location,places.types,places.rating,places.userRatingCount,places.primaryType,places.regularOpeningHours,places.photos";
 
   try {
     const res = await fetch(endpoint, {
@@ -366,6 +372,8 @@ export async function textSearchPlaces(query, options = {}) {
       primaryType: p.primaryType || p.types?.[0] || "point_of_interest",
       rating: p.rating,
       userRatingCount: p.userRatingCount,
+      regularOpeningHours: p.regularOpeningHours || null,
+      photos: p.photos || [],
       types: p.types || []
     }));
   } catch (err) {

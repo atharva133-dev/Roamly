@@ -11,6 +11,8 @@ enum Category {
   TRANSPORT
   FOOD
   HOTEL
+  ACTIVITIES
+  CONTINGENCY
 }
 
 enum UserRole {

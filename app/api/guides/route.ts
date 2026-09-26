@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { VerificationStatus, AvailabilityStatus } from "@prisma/client";
+import { getDemoGuides } from "@/server/src/services/demoGuides.js";
 
 export async function GET(req: Request) {
-  try {
-    const { searchParams } = new URL(req.url);
-    const locationId = searchParams.get("locationId");
-    const city = searchParams.get("city");
-    const language = searchParams.get("language");
+  const { searchParams } = new URL(req.url);
+  const locationId = searchParams.get("locationId");
+  const city = searchParams.get("city");
+  const language = searchParams.get("language");
 
+  try {
     if (!locationId && !city) {
       return NextResponse.json(
         { error: "locationId or city query parameter is required" },
@@ -113,55 +114,14 @@ export async function GET(req: Request) {
     });
   } catch (error) {
     console.warn("DB offline or unreachable, serving verified demo guides fallback:", error);
-    const demoGuides = [
-      {
-        id: "guide_rahul_sharma",
-        userId: "user_rahul",
-        name: "Rahul Sharma",
-        profilePhoto: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80",
-        bio: "Certified Maharashtra Tourism Department Guide with 7 years of deep archival research into South Mumbai's Indo-Saracenic architecture, Victorian Gothic heritage, and dock history.",
-        rating: 4.9,
-        experienceYears: 7,
-        hourlyRate: 650,
-        languages: ["English", "Hindi", "Marathi"],
-        expertise: ["Colonial Heritage", "Architecture", "Street Photography", "Harbor Lore"],
-        verificationStatus: "VERIFIED",
-        availabilityStatus: "AVAILABLE",
-        isCurrentlyAtLocation: true,
-        currentLocation: { id: "loc_1", name: "Gateway of India" },
-        coveredLocations: [
-          { id: "loc_1", name: "Gateway of India" },
-          { id: "loc_2", name: "Colaba Causeway & Heritage Quarter" },
-          { id: "loc_3", name: "Marine Drive Promenade" }
-        ]
-      },
-      {
-        id: "guide_priya_desai",
-        userId: "user_priya",
-        name: "Priya Desai",
-        profilePhoto: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=400&q=80",
-        bio: "Culinary anthropologist & art historian specializing in Parsi cafes, coastal Konkani tasting trails, and the vibrant Kala Ghoda gallery scene.",
-        rating: 4.8,
-        experienceYears: 5,
-        hourlyRate: 800,
-        languages: ["English", "Hindi", "Gujarati"],
-        expertise: ["Parsi & Konkani Cuisine", "Kala Ghoda Art Walk", "Antique Hunting"],
-        verificationStatus: "VERIFIED",
-        availabilityStatus: "AVAILABLE",
-        isCurrentlyAtLocation: true,
-        currentLocation: { id: "loc_2", name: "Colaba Causeway & Heritage Quarter" },
-        coveredLocations: [
-          { id: "loc_1", name: "Gateway of India" },
-          { id: "loc_2", name: "Colaba Causeway & Heritage Quarter" }
-        ]
-      }
-    ];
+    const demoGuides = getDemoGuides(city || "Mumbai");
 
     return NextResponse.json({
       location: "Gateway of India",
       city: "Mumbai",
       totalAvailable: demoGuides.length,
-      guides: demoGuides
+      guides: demoGuides,
+      isDemo: true
     });
   }
 }

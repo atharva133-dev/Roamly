@@ -70,7 +70,13 @@ export default function GuideDiscoveryPage() {
       try {
         setLoadingLocations(true);
         const res = await fetch("/api/locations?city=Mumbai");
-        const data = await res.json();
+        if (!res.ok) {
+          console.warn("Failed to fetch locations, status:", res.status);
+          return;
+        }
+        const text = await res.text();
+        if (!text) return;
+        const data = JSON.parse(text);
         if (data.locations) {
           setLocations(data.locations);
           if (data.locations.length > 0) {
@@ -94,7 +100,17 @@ export default function GuideDiscoveryPage() {
       try {
         setLoadingGuides(true);
         const res = await fetch(`/api/guides?locationId=${locId}`);
-        const data = await res.json();
+        if (!res.ok) {
+          console.warn("Failed to fetch guides, status:", res.status);
+          setGuides([]);
+          return;
+        }
+        const text = await res.text();
+        if (!text) {
+          setGuides([]);
+          return;
+        }
+        const data = JSON.parse(text);
         if (data.guides) {
           setGuides(data.guides);
         } else {
@@ -102,6 +118,7 @@ export default function GuideDiscoveryPage() {
         }
       } catch (err) {
         console.error("Failed to load guides:", err);
+        setGuides([]);
       } finally {
         setLoadingGuides(false);
       }

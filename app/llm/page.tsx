@@ -38,7 +38,11 @@ import {
   ArrowRight,
   Sparkles,
   Search,
-  LocateFixed
+  LocateFixed,
+  ChevronDown,
+  ChevronUp,
+  ShieldCheck,
+  ShieldAlert
 } from "lucide-react";
 
 interface TravelDetails {
@@ -81,7 +85,91 @@ interface ApiResponse {
   summary: string;
 }
 
-export function deriveBudgetCategory(amountStr: string): {
+// --- Grounded Agent Router response shape (POST /api/itinerary/plan) ---
+// See docs/Roamly_Grounded_Agent_Router_Fixed_Plan.md for the full contract.
+interface AgentGuide {
+  guideId: string;
+  name: string;
+  isDemo: boolean;
+  isBookable: boolean;
+  hourlyRate: number;
+  cost: number;
+}
+
+interface AgentActivity {
+  slot: string;
+  placeId: string;
+  name: string;
+  startTime: string;
+  endTime: string;
+  estimatedCost: number;
+}
+
+interface AgentDay {
+  day: string;
+  date: string;
+  locationId: string;
+  city: string;
+  activities: AgentActivity[];
+  transit: {
+    fromLocationId: string;
+    toLocationId: string;
+    distanceMeters: number | null;
+    durationSeconds: number | null;
+    requestedMode: string;
+    actualModes: string[];
+    preferenceSatisfied: boolean;
+  } | null;
+  guide: AgentGuide | null;
+  weather:
+    | { available: true; description: string; temperatureMaxC: number; temperatureMinC: number; precipitationProbabilityMax: number }
+    | { available: false; reason: string };
+  accommodationCost: number;
+  foodCost: number;
+  transportCost: number;
+  activitiesCost: number;
+  guideCost: number;
+  dayEstimatedCost: number;
+}
+
+interface ItineraryPlanSuccess {
+  success: true;
+  tripId: number | null;
+  tripSummary: {
+    totalBudget: number;
+    estimatedTotalCost: number;
+    remainingBudget: number;
+    travelerCount: number;
+    durationDays: number;
+    budgetPerPersonPerDay: number;
+  };
+  budgetBreakdown: Record<string, number>;
+  destinations: Array<{ locationId: string; name: string; city: string }>;
+  days: AgentDay[];
+  sources: Record<string, string | null>;
+  routerTrace: {
+    agentsExecuted: string[];
+    fallbackUsed: boolean;
+    validationStatus: "PASSED" | "FAILED";
+    reOptimizations: number;
+  };
+  warnings?: Array<{ code: string; details: string }>;
+}
+
+interface ItineraryPlanFailure {
+  success: false;
+  error: { code: string; message: string; details?: unknown };
+  routerTrace: {
+    agentsExecuted: string[];
+    fallbackUsed: boolean;
+    validationStatus: "PASSED" | "FAILED";
+    reOptimizations: number;
+  };
+}
+
+type ItineraryPlanResponse = ItineraryPlanSuccess | ItineraryPlanFailure;
+
+function deriveBudgetCategory(amountStr: string): {
   category: "Budget" | "Mid-range" | "Premium" | "Luxury";
   description: string;
 } {
@@ -114,6 +202,104 @@ export function deriveBudgetCategory(amountStr: string): {
 const accommodationOptions = ["Hostel", "Hotel", "Airbnb", "Resort"];
 const transportOptions = ["Public Transport", "Car Rental", "Train", "Flight"];
 const travelStyleOptions = ["Cultural", "Adventure", "Relaxation", "Food & Wine", "Historical", "Nature", "Urban", "Rural"];
+
+const travelerCountOptions = [1, 2, 3, 4, 5];
+
+const guidePreferenceOptions: Array<{ value: "NO_GUIDE" | "NEED_GUIDE" | "CHOOSE_GUIDE"; label: string }> = [
+  { value: "NO_GUIDE", label: "No Guide" },
+  { value: "NEED_GUIDE", label: "Need a Guide" },
+  { value: "CHOOSE_GUIDE", label: "Choose a Guide" },
+];
+
+/**
+ * Maps the free-text transportation dropdown value to the grounded agent
+ * router's supported transit modes. "Flight" has no ground-route equivalent
+ * (routeAgent only computes routes between consecutive resolved stops), so
+ * it falls back to CAB for local transit legs.
+ */
+function mapTransportationPreference(uiValue: string): "TRAIN" | "PUBLIC_TRANSIT" | "CAB" | "WALKING" {
+  switch (uiValue) {
+    case "Train":
+      return "TRAIN";
+    case "Public Transport":
+      return "PUBLIC_TRANSIT";
+    case "Car Rental":
+      return "CAB";
+    case "Flight":
+      return "CAB";
+    default:
+      return "CAB";
+  }
+}
+
+const WEATHER_CODE_EMOJI: Record<string, string> = {
+  Clear: "☀️",
+  Cloud: "☁️",
+  Rain: "🌧️",
+  Drizzle: "🌦️",
+  Snow: "❄️",
+  Fog: "🌫️",
+  Thunder: "⛈️",
+};
+
+function weatherEmoji(description: string): string {
+  const match = Object.keys(WEATHER_CODE_EMOJI).find((k) => description.includes(k));
+  return match ? WEATHER_CODE_EMOJI[match] : "🌤️";
+}
+
+/**
+ * Adapts the grounded agent router's response (AgentDay[]) into the legacy
+ * TravelPlan shape the existing itinerary UI renders, so the detailed card
+ * layout below keeps working unchanged. The raw agent response is kept
+ * separately (see `agentResult` state) for the grounding diagnostic panel.
+ */
+function adaptAgentResponseToTravelPlan(result: ItineraryPlanSuccess): TravelPlan {
+  const itinerary: ItineraryDay[] = result.days.map((day) => {
+    const bySlot = (slot: string) => {
+      const activity = day.activities.find((a) => a.slot === slot);
+      if (!activity) return "Free time";
+      return `${activity.name} (${activity.startTime}–${activity.endTime})`;
+    };
+
+    const weatherNote = day.weather.available
+      ? `${weatherEmoji(day.weather.description)} ${day.weather.description}, ${Math.round(day.weather.temperatureMinC)}–${Math.round(day.weather.temperatureMaxC)}°C`
+      : "Weather forecast unavailable for this date";
+
+    const guideNote = day.guide
+      ? `${day.guide.name}${day.guide.isDemo ? " ⚠️ DEMO DATA — NOT BOOKABLE" : ""}`
+      : "No guide assigned";
+
+    return {
+      day: day.day,
+      city: day.city,
+      morning: bySlot("morning"),
+      afternoon: bySlot("afternoon"),
+      evening: bySlot("evening"),
+      accommodation: `${weatherNote}`,
+      meals: guideNote,
+      estimated_cost: `₹${day.dayEstimatedCost.toLocaleString("en-IN")}`,
+    };
+  });
+
+  const travel_tips = [
+    ...result.days
+      .filter((d) => d.transit && d.transit.preferenceSatisfied === false)
+      .map((d) => `Travel from ${d.transit!.fromLocationId === d.locationId ? d.city : "the previous stop"} to ${d.city} may not fully match your preferred transport mode.`),
+    ...(result.warnings || []).map((w) => w.details),
+  ];
+
+  return {
+    itinerary,
+    total_estimated_cost: `₹${result.tripSummary.estimatedTotalCost.toLocaleString("en-IN")}`,
+    travel_tips: travel_tips.length > 0 ? travel_tips : ["All grounded data checks passed — have a great trip!"],
+    packing_list: ["Comfortable walking shoes", "Weather-appropriate clothing", "Phone charger & power bank", "Government ID / passport copies"],
+    emergency_contacts: {
+      local_emergency: "112",
+      embassy: "Contact your respective embassy/consulate",
+      hotel: "Hotel/accommodation front desk",
+    },
+  };
+}
 
 export interface DestinationItem {
   locationId?: string;
@@ -153,6 +339,10 @@ export default function LLMPage() {
   const [transportation, setTransportation] = useState("Train");
   const [travelInterests, setTravelInterests] = useState<string[]>([]);
   const [specialRequests, setSpecialRequests] = useState("");
+  const [travelerCount, setTravelerCount] = useState(2);
+  const [guidePreference, setGuidePreference] = useState<"NO_GUIDE" | "NEED_GUIDE" | "CHOOSE_GUIDE">("NO_GUIDE");
+  const [agentResult, setAgentResult] = useState<ItineraryPlanSuccess | null>(null);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
 
   const derivedBudget = deriveBudgetCategory(customBudget);
   const searchTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
@@ -355,6 +545,7 @@ export default function LLMPage() {
     setError("");
     setPlan(null);
     setSummary("");
+    setAgentResult(null);
     setDecisionStatus("pending");
 
     try {
@@ -379,18 +570,19 @@ export default function LLMPage() {
       }
 
       const numericBudget = Math.max(0, parseInt(customBudget.replace(/[^0-9]/g, ""), 10) || 0);
-      const formattedBudget = `₹${numericBudget.toLocaleString("en-IN")} total budget (Category: ${derivedBudget.category})`;
 
-      const payload: TravelDetails = {
+      const payload = {
         destinations,
-        start_date: startDate,
-        end_date: endDate,
-        budget: formattedBudget,
-        travel_style: travelInterests[0] || "Cultural",
+        startDate,
+        endDate,
+        travelerCount,
+        totalBudget: numericBudget,
+        accommodationPreference: accommodation,
+        transportationPreference: mapTransportationPreference(transportation),
         interests: travelInterests,
-        accommodation,
-        transportation,
-        special_requests: specialRequests || "None",
+        travelStyle: travelInterests[0] || "Cultural",
+        pace: "MODERATE" as const,
+        guidePreference,
       };
 
       // Always use direct API but simulate queue experience
@@ -401,33 +593,29 @@ export default function LLMPage() {
       // Simulate "queued" status for 1 second
       await new Promise(resolve => setTimeout(resolve, 1000));
       setJobStatus('processing');
-      console.log('⚙️  Job processing - generating your travel plan...');
+      console.log('⚙️  Job processing - generating your travel plan (grounded agent router)...');
 
-      // Simulate "processing" status for 2 seconds
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      console.log('🤖 Calling LLM API...');
-
-      // Make the actual API call
-      const res = await fetch("/api/generatePlanWithSummary", {
+      // Make the actual API call to the grounded agent router
+      const res = await fetch("/api/itinerary/plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || "Request failed");
+      const data: ItineraryPlanResponse = await res.json();
+
+      if (!data.success) {
+        throw new Error(data.error?.message || "Itinerary generation failed validation");
       }
 
-      const data: ApiResponse = await res.json();
-      console.log('✅ LLM response received successfully!');
-
-      // Simulate "processing" for a bit more to show the experience
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      console.log('✅ Grounded itinerary received successfully!', data.routerTrace);
       console.log('🎉 Travel plan completed!');
 
-      setPlan(data.plan);
-      setSummary(data.summary);
+      setAgentResult(data);
+      setPlan(adaptAgentResponseToTravelPlan(data));
+      setSummary(
+        `Grounded ${data.tripSummary.durationDays}-day trip to ${data.destinations.map((d) => d.name).join(", ")} for ${data.tripSummary.travelerCount} traveler(s). Validation: ${data.routerTrace.validationStatus}.`
+      );
       setDecisionStatus("pending");
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : "Failed to generate travel plan";
@@ -447,6 +635,7 @@ export default function LLMPage() {
     const acceptedData = {
       plan,
       summary,
+      tripId: agentResult?.tripId ?? null,
       destinations: resolvedDests,
       destinationDetails: selectedDestinations,
       startDate,
@@ -456,6 +645,8 @@ export default function LLMPage() {
       budgetCategory: derivedBudget.category,
       accommodation,
       transportation,
+      travelerCount,
+      guidePreference,
       interests: travelInterests,
       acceptedAt: new Date().toISOString(),
     };
@@ -764,6 +955,47 @@ export default function LLMPage() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+            </div>
+
+            {/* Traveler Count & Guide Preference */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Traveler Count
+                </label>
+                <div className="flex gap-2 flex-wrap">
+                  {travelerCountOptions.map((count) => (
+                    <Button
+                      key={count}
+                      type="button"
+                      size="sm"
+                      variant={travelerCount === count ? "default" : "outline"}
+                      onClick={() => setTravelerCount(count)}
+                    >
+                      {count}
+                      {count === 5 ? "+" : ""}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Guide Preference
+                </label>
+                <div className="flex gap-2 flex-wrap">
+                  {guidePreferenceOptions.map((option) => (
+                    <Button
+                      key={option.value}
+                      type="button"
+                      size="sm"
+                      variant={guidePreference === option.value ? "default" : "outline"}
+                      onClick={() => setGuidePreference(option.value)}
+                    >
+                      {option.label}
+                    </Button>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -1197,6 +1429,82 @@ export default function LLMPage() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Grounding Diagnostic Panel (collapsible) */}
+            {agentResult && (
+              <Card className="border-dashed">
+                <CardHeader
+                  className="cursor-pointer select-none"
+                  onClick={() => setShowDiagnostics((prev) => !prev)}
+                >
+                  <CardTitle className="flex items-center justify-between text-sm text-gray-600">
+                    <span className="flex items-center gap-2">
+                      {agentResult.routerTrace.validationStatus === "PASSED" ? (
+                        <ShieldCheck className="h-4 w-4 text-green-600" />
+                      ) : (
+                        <ShieldAlert className="h-4 w-4 text-amber-600" />
+                      )}
+                      Grounding Diagnostics
+                      <Badge variant={agentResult.routerTrace.validationStatus === "PASSED" ? "secondary" : "outline"}>
+                        {agentResult.routerTrace.validationStatus}
+                      </Badge>
+                      {agentResult.routerTrace.fallbackUsed && (
+                        <Badge variant="outline" className="text-amber-700">Fallback used</Badge>
+                      )}
+                    </span>
+                    {showDiagnostics ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </CardTitle>
+                </CardHeader>
+                {showDiagnostics && (
+                  <CardContent className="space-y-4 text-sm">
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 uppercase mb-2">Agents Executed</p>
+                      <div className="flex flex-wrap gap-2">
+                        {agentResult.routerTrace.agentsExecuted.map((agent, idx) => (
+                          <Badge key={`${agent}-${idx}`} variant="secondary" className="text-xs">
+                            <Check className="h-3 w-3 mr-1 text-green-600" />
+                            {agent}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 uppercase mb-2">Grounding Sources</p>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                        {Object.entries(agentResult.sources).map(([key, value]) => (
+                          <div key={key} className="flex justify-between border rounded px-2 py-1">
+                            <span className="text-gray-500">{key}</span>
+                            <span className="font-mono text-gray-800">{value || "—"}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {agentResult.days.some((d) => d.guide?.isDemo) && (
+                      <div className="text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2 text-xs">
+                        ⚠️ DEMO DATA — NOT BOOKABLE: one or more days use a demo guide fallback because the Roamly guide database was unreachable.
+                      </div>
+                    )}
+
+                    {agentResult.warnings && agentResult.warnings.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-gray-500 uppercase mb-2">Warnings</p>
+                        <ul className="space-y-1 text-xs text-gray-600">
+                          {agentResult.warnings.map((w, idx) => (
+                            <li key={idx}>• [{w.code}] {w.details}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    <p className="text-xs text-gray-400">
+                      Re-optimizations: {agentResult.routerTrace.reOptimizations} · Trip ID: {agentResult.tripId ?? "not persisted"}
+                    </p>
+                  </CardContent>
+                )}
+              </Card>
+            )}
           </div>
         )}
       </div>

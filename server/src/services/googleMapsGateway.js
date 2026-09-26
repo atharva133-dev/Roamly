@@ -14,10 +14,11 @@
 import { autocompletePlaces, textSearchPlaces, getPlaceDetails } from "../integrations/google/places.js";
 import { geocodeAddress, reverseGeocode, geocodePlaceId } from "../integrations/google/geocoding.js";
 import { getCurrentDeviceLocation } from "../integrations/google/geolocation.js";
+import { computeRoute } from "../integrations/google/routes.js";
 
 // Dynamically resolve Prisma client across Next.js and standalone Node runtime
 let prismaClientInstance = null;
-async function getPrismaClient() {
+export async function getPrismaClient() {
   if (prismaClientInstance) return prismaClientInstance;
   try {
     const mod = await import("@/lib/prisma").catch(() => null);
@@ -81,8 +82,33 @@ export async function searchPlaces(query, options = {}) {
 }
 
 /**
+ * Text-search candidate attractions/places (e.g. "museums in Delhi") using
+ * Google Places API (New) Text Search. Distinct from searchPlaces(), which is
+ * destination-name autocomplete.
+ *
+ * @param {string} query
+ * @param {Object} [options]
+ * @returns {Promise<Array<Object>>}
+ */
+export async function searchAttractions(query, options = {}) {
+  const clean = String(query || "").trim();
+  if (!clean) return [];
+
+  const cacheKey = `text:${clean.toLowerCase()}`;
+  if (placeSearchCache.has(cacheKey)) {
+    return placeSearchCache.get(cacheKey);
+  }
+
+  const results = await textSearchPlaces(clean, options);
+  placeSearchCache.set(cacheKey, results);
+  setTimeout(() => placeSearchCache.delete(cacheKey), 3600000);
+
+  return results;
+}
+
+/**
  * Get place details with explicit field masks
- * 
+ *
  * @param {string} placeId
  * @param {Object} [options]
  * @returns {Promise<Object|null>}
@@ -162,6 +188,39 @@ export async function reverseGeocodeCoordinates(latitude, longitude) {
  */
 export async function getCurrentDeviceNetworkLocation(options = {}) {
   return getCurrentDeviceLocation(options);
+}
+
+// Short-lived route cache: identical origin/destination/mode lookups within a
+// single itinerary generation happen repeatedly across re-optimization passes.
+const routeCache = new Map();
+const ROUTE_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+/**
+ * Compute a route between two canonical Roamly Locations (or raw coordinates)
+ * using Google Routes API (v2), with a deterministic Roamly-estimate fallback.
+ *
+ * Never fabricates a duration/distance as Google-sourced when it isn't.
+ *
+ * @param {Object} params
+ * @param {{lat: number, lng: number}} params.origin
+ * @param {{lat: number, lng: number}} params.destination
+ * @param {"TRAIN"|"PUBLIC_TRANSIT"|"CAB"|"WALKING"} [params.mode="CAB"]
+ * @returns {Promise<Object>}
+ */
+export async function getRouteBetween({ origin, destination, mode = "CAB" }) {
+  if (!origin || !destination) {
+    return { available: false, reason: "ROUTE_UNAVAILABLE", detail: "Missing origin/destination" };
+  }
+
+  const cacheKey = `${origin.lat},${origin.lng}|${destination.lat},${destination.lng}|${mode}`;
+  const cached = routeCache.get(cacheKey);
+  if (cached && Date.now() - cached.cachedAt < ROUTE_CACHE_TTL_MS) {
+    return cached.result;
+  }
+
+  const result = await computeRoute({ origin, destination, mode });
+  routeCache.set(cacheKey, { result, cachedAt: Date.now() });
+  return result;
 }
 
 /**
