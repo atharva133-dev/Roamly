@@ -412,7 +412,7 @@ export async function getPlaceDetails(placeId, options = {}) {
     return null;
   }
 
-  const fieldMask = "id,displayName,formattedAddress,location,rating,userRatingCount,reviews,regularOpeningHours,primaryType,photos";
+  const fieldMask = options.fieldMask || "id,displayName,formattedAddress,location,rating,userRatingCount,reviews,regularOpeningHours,currentOpeningHours,primaryType,priceLevel,googleMapsUri,photos";
   const endpoint = `https://places.googleapis.com/v1/places/${encodeURIComponent(cleanPlaceId)}`;
 
   try {
@@ -441,10 +441,24 @@ export async function getPlaceDetails(placeId, options = {}) {
       longitude: data.location?.longitude,
       rating: data.rating || null,
       userRatingCount: data.userRatingCount || 0,
-      reviews: data.reviews || [],
+      reviews: (data.reviews || []).map(r => ({
+        authorName: r.authorAttribution?.displayName || "Anonymous",
+        rating: r.rating,
+        text: r.text?.text || r.originalText?.text || "",
+        relativePublishTimeDescription: r.relativePublishTimeDescription || "",
+        publishTime: r.publishTime || null
+      })),
       regularOpeningHours: data.regularOpeningHours || null,
+      currentOpeningHours: data.currentOpeningHours || null,
       primaryType: data.primaryType || "point_of_interest",
-      photos: data.photos || []
+      priceLevel: data.priceLevel || null,
+      googleMapsUri: data.googleMapsUri || null,
+      photos: (data.photos || []).map(p => ({
+        name: p.name,
+        widthPx: p.widthPx,
+        heightPx: p.heightPx,
+        authorAttributions: p.authorAttributions || []
+      }))
     };
   } catch (err) {
     if (process.env.NODE_ENV !== "production") {
@@ -454,3 +468,117 @@ export async function getPlaceDetails(placeId, options = {}) {
     return fallback || null;
   }
 }
+
+/**
+ * Nearby Search via Google Places API (New)
+ *
+ * Searches for places near a given location within a specified radius.
+ * Used for: nearby attractions, hotels, restaurants, etc.
+ *
+ * @param {Object} params
+ * @param {number} params.latitude - Center latitude
+ * @param {number} params.longitude - Center longitude
+ * @param {number} [params.radiusMeters=1500] - Search radius in meters
+ * @param {Array<string>} [params.includedTypes] - Google Place types to include
+ * @param {Array<string>} [params.excludedPlaceIds] - Place IDs to exclude from results
+ * @param {number} [params.maxResultCount=10] - Maximum number of results
+ * @param {string} [params.languageCode="en"]
+ * @returns {Promise<Array<Object>>}
+ */
+export async function nearbySearchPlaces(params = {}) {
+  const {
+    latitude,
+    longitude,
+    radiusMeters = 1500,
+    includedTypes,
+    excludedPlaceIds = [],
+    maxResultCount = 10,
+    languageCode = "en"
+  } = params;
+
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return [];
+  }
+
+  const apiKey = getApiKey();
+
+  if (process.env.NODE_ENV !== "production") {
+    console.log(`[Google Places] nearby search at (${latitude.toFixed(4)}, ${longitude.toFixed(4)}), radius=${radiusMeters}m, types=${(includedTypes || ["tourist_attraction"]).join(",")}`);
+  }
+
+  if (!apiKey) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("[Google Places] No API key; nearby search unavailable");
+    }
+    return [];
+  }
+
+  const endpoint = "https://places.googleapis.com/v1/places:searchNearby";
+  const fieldMask = "places.id,places.displayName,places.formattedAddress,places.location,places.types,places.rating,places.userRatingCount,places.primaryType,places.regularOpeningHours,places.priceLevel,places.googleMapsUri,places.photos";
+
+  const body = {
+    locationRestriction: {
+      circle: {
+        center: { latitude, longitude },
+        radius: Math.min(radiusMeters, 50000) // Google max is 50km
+      }
+    },
+    maxResultCount: Math.min(maxResultCount, 20),
+    languageCode
+  };
+
+  if (Array.isArray(includedTypes) && includedTypes.length > 0) {
+    body.includedTypes = includedTypes;
+  }
+
+  try {
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask": fieldMask
+      },
+      body: JSON.stringify(body)
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(`[Google Places] Nearby Search error: ${errData?.error?.message || res.status}`);
+      }
+      return [];
+    }
+
+    const data = await res.json();
+    const excludeSet = new Set(excludedPlaceIds);
+
+    return (data.places || [])
+      .filter(p => !excludeSet.has(p.id))
+      .map(p => ({
+        placeId: p.id,
+        name: p.displayName?.text || "",
+        address: p.formattedAddress || "",
+        latitude: p.location?.latitude,
+        longitude: p.location?.longitude,
+        primaryType: p.primaryType || p.types?.[0] || "point_of_interest",
+        types: p.types || [],
+        rating: p.rating || null,
+        userRatingCount: p.userRatingCount || 0,
+        regularOpeningHours: p.regularOpeningHours || null,
+        priceLevel: p.priceLevel || null,
+        googleMapsUri: p.googleMapsUri || null,
+        photos: (p.photos || []).slice(0, 3).map(ph => ({
+          name: ph.name,
+          widthPx: ph.widthPx,
+          heightPx: ph.heightPx
+        }))
+      }));
+  } catch (err) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn(`[Google Places] Nearby Search network error: ${err.message}`);
+    }
+    return [];
+  }
+}
+

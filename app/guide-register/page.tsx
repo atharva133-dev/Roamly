@@ -116,6 +116,9 @@ export default function GuideRegistrationPage() {
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [isResending, setIsResending] = useState(false);
+  const [resendNotice, setResendNotice] = useState<string | null>(null);
+  const [verificationUrl, setVerificationUrl] = useState<string | null>(null);
 
   // Step 2: Personal Information
   const [fullName, setFullName] = useState("");
@@ -321,9 +324,14 @@ export default function GuideRegistrationPage() {
 
       if (res.ok) {
         setSubmitSuccess(true);
-        setTimeout(() => {
-          router.push("/guides");
-        }, 3000);
+        try {
+          const data = await res.json();
+          if (data.verificationUrl) {
+            setVerificationUrl(data.verificationUrl);
+          }
+        } catch {
+          // ignore
+        }
       } else {
         let errorMsg = "Failed to create guide profile. Please try again.";
         try {
@@ -331,6 +339,7 @@ export default function GuideRegistrationPage() {
           if (text) {
             const errData = JSON.parse(text);
             if (errData?.error) errorMsg = errData.error;
+            if (errData?.details) errorMsg += `\n\nDetails: ${errData.details}`;
           }
         } catch {
           // Non-JSON response
@@ -342,6 +351,29 @@ export default function GuideRegistrationPage() {
       alert("Network error: Could not connect to the server (Failed to fetch). Please ensure the Next.js dev server is running on http://localhost:3000 and try again.");
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleResendEmail = async () => {
+    setIsResending(true);
+    setResendNotice(null);
+    try {
+      const res = await fetch("/api/guides/verify/resend", {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setResendNotice("Verification email resent successfully! Check your inbox.");
+        if (data.verificationUrl) {
+          setVerificationUrl(data.verificationUrl);
+        }
+      } else {
+        setResendNotice(data.error || "Failed to resend verification email.");
+      }
+    } catch {
+      setResendNotice("Network error. Please try again later.");
+    } finally {
+      setIsResending(false);
     }
   };
 
@@ -1234,25 +1266,67 @@ export default function GuideRegistrationPage() {
                       <>
                         <div className="relative w-24 h-24 mx-auto">
                           <div className="absolute inset-0 rounded-full bg-emerald-100 animate-ping opacity-30" />
-                          <div className="relative w-24 h-24 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center shadow-xl">
+                          <div className="relative w-24 h-24 rounded-full bg-gradient-to-br from-[#485C11] to-[#6b8a1a] flex items-center justify-center shadow-xl">
                             <CheckCircle2 className="w-12 h-12 text-white" />
                           </div>
                         </div>
                         <div>
                           <h2 className="text-2xl font-bold text-[#1a1a1a]">
-                            Profile Created Successfully! 🎉
+                            Guide registration successful.
                           </h2>
-                          <p className="text-sm text-[#6b7280] mt-2 max-w-md mx-auto">
-                            Your guide profile has been submitted for verification. You&apos;ll receive a notification once approved.
+                          <p className="text-sm font-medium text-[#485C11] mt-2">
+                            Check your email to verify your Roamly Guide account.
+                          </p>
+                          <p className="text-xs text-[#6b7280] mt-1 max-w-md mx-auto">
+                            We have sent a secure verification link to <span className="font-semibold text-[#1a1a1a]">{email}</span>. Click the link in your email to activate public discoverability and start receiving bookings.
                           </p>
                         </div>
-                        <div className="bg-[#f4f7ee] rounded-2xl p-4 max-w-sm mx-auto border border-[#d6dacb]">
-                          <p className="text-xs text-[#485C11] font-semibold">
-                            Verification Status: PENDING
+
+                        <div className="bg-[#f4f7ee] rounded-2xl p-4 max-w-sm mx-auto border border-[#d6dacb] text-left">
+                          <p className="text-xs text-[#485C11] font-semibold flex items-center gap-1.5">
+                            <Shield className="w-4 h-4" />
+                            Email Verification: ⚠ Pending
                           </p>
                           <p className="text-xs text-[#6b7280] mt-1">
-                            Redirecting to Guide Dashboard...
+                            Admin approval is NOT required. Your profile will be automatically activated as soon as you verify your email address.
                           </p>
+                        </div>
+
+                        {verificationUrl && (
+                          <div className="p-4 bg-emerald-50 border border-emerald-300 rounded-2xl max-w-sm mx-auto text-center space-y-2">
+                            <p className="text-xs text-emerald-800 font-semibold">
+                              Testing locally or haven&apos;t received the email?
+                            </p>
+                            <a
+                              href={verificationUrl}
+                              className="inline-flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-full font-semibold text-xs shadow-sm transition-all"
+                            >
+                              Verify Account Instantly →
+                            </a>
+                          </div>
+                        )}
+
+                        {resendNotice && (
+                          <div className="max-w-sm mx-auto p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
+                            {resendNotice}
+                          </div>
+                        )}
+
+                        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2 max-w-sm mx-auto">
+                          <button
+                            onClick={() => router.push("/guide-dashboard")}
+                            className="w-full sm:w-auto flex-1 bg-[#485C11] hover:bg-[#3a4d0d] text-white px-5 py-3 rounded-full font-semibold text-xs transition-all shadow-md cursor-pointer"
+                          >
+                            Open Guide Dashboard
+                          </button>
+                          <button
+                            onClick={handleResendEmail}
+                            disabled={isResending}
+                            className="w-full sm:w-auto flex-1 bg-white hover:bg-gray-50 border border-[#e5e7db] text-[#485C11] px-5 py-3 rounded-full font-semibold text-xs transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
+                          >
+                            {isResending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                            Resend Verification Email
+                          </button>
                         </div>
                       </>
                     ) : isSubmitting ? (

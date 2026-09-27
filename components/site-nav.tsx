@@ -1,26 +1,60 @@
 "use client"
 
 import { SignedIn, SignedOut, UserButton, useUser, useClerk } from "@clerk/nextjs"
-import { Sparkles, Menu, X, CalendarDays, Users, Plane, Compass } from "lucide-react"
+import { Sparkles, Menu, X, CalendarDays, Users, Plane, Compass, MapPin } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 
 export function SiteNav() {
   const { openSignIn } = useClerk()
-  const { user } = useUser()
+  const { user, isSignedIn } = useUser()
   const pathname = usePathname()
   const username = user?.firstName || user?.username || user?.fullName || "Traveler"
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [dbRole, setDbRole] = useState<string | null>(null)
 
   const closeMobile = () => setMobileOpen(false)
 
-  const navItems = [
-    { href: "/llm", label: "AI Travel Planner", icon: Plane },
-    { href: "/mapcalendar", label: "My Schedule", icon: CalendarDays },
-    { href: "/community", label: "View Community", icon: Users },
-  ]
+  // Fetch role for authenticated users to customize navigation
+  useEffect(() => {
+    if (isSignedIn) {
+      fetch("/api/auth/me")
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data?.authenticated && data?.user?.role) {
+            setDbRole(data.user.role)
+          }
+        })
+        .catch(() => { })
+    } else {
+      setDbRole(null)
+    }
+  }, [isSignedIn])
+
+  // Suppress navbar on auth and role selection pages to prevent duplicate headers
+  if (
+    pathname?.startsWith("/choose-role") ||
+    pathname?.startsWith("/login") ||
+    pathname?.startsWith("/sign-in") ||
+    pathname?.startsWith("/sign-up")
+  ) {
+    return null
+  }
+
+  const isGuide = dbRole === "GUIDE"
+
+  const navItems = isGuide
+    ? [
+        { href: "/guide-dashboard", label: "Guide Dashboard", icon: Compass },
+        { href: "/guides", label: "Public Guides", icon: Users },
+      ]
+    : [
+        { href: "/llm", label: "AI Travel Planner", icon: Plane },
+        { href: "/trip-map", label: "Map", icon: MapPin },
+        { href: "/mapcalendar", label: "My Schedule", icon: CalendarDays },
+      ]
 
   return (
     <>
@@ -39,54 +73,70 @@ export function SiteNav() {
 
           {/* Desktop Navigation Links matching the reference */}
           <nav className="hidden lg:flex items-center gap-8 xl:gap-10 text-[14px] font-medium text-[#2d3129]">
-            <Link className="hover:text-[#3f520f] transition-colors duration-150" href="/#destinations">
-              Destinations
-            </Link>
-            <Link className="hover:text-[#3f520f] transition-colors duration-150" href="/llm">
-              Trips
-            </Link>
-            <Link className="hover:text-[#3f520f] transition-colors duration-150" href="/guides">
-              Local Guides
-            </Link>
-            <Link className="hover:text-[#3f520f] transition-colors duration-150" href="/#itinerary-widget">
-              Stays
-            </Link>
-            <Link className="hover:text-[#3f520f] transition-colors duration-150" href="/mapcalendar">
-              Travel Tools
-            </Link>
-            <Link className="hover:text-[#3f520f] transition-colors duration-150" href="/community">
-              Community
-            </Link>
+            {isGuide ? (
+              <>
+                <Link className="text-[#3f520f] font-semibold hover:text-[#32420b] transition-colors" href="/guide-dashboard">
+                  Guide Dashboard
+                </Link>
+                <Link className="hover:text-[#3f520f] transition-colors duration-150" href="/guides">
+                  Guides Directory
+                </Link>
+              </>
+            ) : (
+              <>
+                <Link className="hover:text-[#3f520f] transition-colors duration-150" href="/llm">
+                  Trips
+                </Link>
+                <Link className="hover:text-[#3f520f] transition-colors duration-150 flex items-center gap-1 font-semibold text-[#3f520f]" href="/trip-map">
+                  <MapPin className="size-3.5" />
+                  Map
+                </Link>
+                <Link className="hover:text-[#3f520f] transition-colors duration-150" href="/guides">
+                  Local Guides
+                </Link>
+                <Link className="hover:text-[#3f520f] transition-colors duration-150" href="/#itinerary-widget">
+                  Stays
+                </Link>
+                <Link className="hover:text-[#3f520f] transition-colors duration-150" href="/mapcalendar">
+                  My Schedule
+                </Link>
+              </>
+            )}
           </nav>
 
           {/* Right side: Search button + Become a Guide + Auth */}
           <div className="flex items-center gap-3 shrink-0">
-            {/* Become a Guide CTA */}
-            <Link
-              href="/guide-register"
-              className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border border-[#8E9C78]/50 bg-[#DFECC6]/50 hover:bg-[#DFECC6] text-[#38480e] transition-all duration-200"
-            >
-              <Compass className="size-3.5" />
-              <span>Become a Guide</span>
-            </Link>
-
-            {/* Circular Search Icon Button */}
-            <button
-              type="button"
-              aria-label="Search"
-              className="flex size-9 items-center justify-center rounded-full border border-[#d6dacb] bg-white text-[#4a5043] hover:text-[#1a1a1a] hover:border-[#3f520f] hover:bg-[#DFECC6]/30 transition-all duration-200 cursor-pointer shadow-xs"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-            </button>
-
-            {/* Auth Buttons */}
-            <SignedOut>
-              <Button
-                className="h-10 rounded-full px-6 text-sm font-semibold bg-[#3f520f] hover:bg-[#32420b] text-white shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer"
-                onClick={() => openSignIn({ afterSignInUrl: `${window.location.origin}/auth-redirect` })}
+            {/* Become a Guide CTA (for travelers or guests) */}
+            {!isGuide && (
+              <Link
+                href="/guide-register"
+                className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border border-[#8E9C78]/50 bg-[#DFECC6]/50 hover:bg-[#DFECC6] text-[#38480e] transition-all duration-200"
               >
-                Sign In
-              </Button>
+                <Compass className="size-3.5" />
+                <span>Become a Guide</span>
+              </Link>
+            )}
+
+            {/* Guide Portal Quick Link if user is already a Guide */}
+            {isGuide && (
+              <Link
+                href="/guide-dashboard"
+                className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full bg-[#3f520f] text-white hover:bg-[#32420b] transition-all duration-200 shadow-xs"
+              >
+                <Compass className="size-3.5" />
+                <span>Guide Portal</span>
+              </Link>
+            )}
+
+            {/* Auth Buttons: Sign In opens role selection page */}
+            <SignedOut>
+              <Link href="/choose-role">
+                <Button
+                  className="h-10 rounded-full px-6 text-sm font-semibold bg-[#3f520f] hover:bg-[#32420b] text-white shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer"
+                >
+                  Sign In
+                </Button>
+              </Link>
             </SignedOut>
 
             <SignedIn>
@@ -94,6 +144,11 @@ export function SiteNav() {
                 <UserButton />
                 <span className="hidden sm:inline-block text-sm font-medium text-foreground">
                   Hello, <span className="font-semibold text-[#3f520f]">{username}</span>
+                  {isGuide && (
+                    <span className="ml-1.5 text-[10px] uppercase font-bold tracking-wide bg-[#DFECC6] text-[#38480e] px-2 py-0.5 rounded-full">
+                      Guide
+                    </span>
+                  )}
                 </span>
               </div>
             </SignedIn>
@@ -136,8 +191,8 @@ export function SiteNav() {
                     href={item.href}
                     onClick={closeMobile}
                     className={`flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${isActive
-                        ? "text-[#485C11] bg-[#485C11]/10 font-semibold"
-                        : "text-muted-foreground hover:text-[#485C11] hover:bg-[#e5e7db]/40"
+                      ? "text-[#485C11] bg-[#485C11]/10 font-semibold"
+                      : "text-muted-foreground hover:text-[#485C11] hover:bg-[#e5e7db]/40"
                       }`}
                   >
                     <Icon className={`size-5 ${isActive ? "text-[#485C11]" : "text-[#485C11]/70"}`} />
@@ -149,11 +204,11 @@ export function SiteNav() {
 
             {/* Signed-out mobile links */}
             <SignedOut>
-              <Link href="/#destinations" onClick={closeMobile} className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-[#e5e7db]/40 transition-all duration-200">Destinations</Link>
+              <Link href="/llm" onClick={closeMobile} className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-[#e5e7db]/40 transition-all duration-200">Trips</Link>
+              <Link href="/trip-map" onClick={closeMobile} className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium text-[#3f520f] font-semibold hover:bg-[#e5e7db]/40 transition-all duration-200">Map</Link>
               <Link href="/guides" onClick={closeMobile} className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-[#e5e7db]/40 transition-all duration-200">Local Guides</Link>
               <Link href="/#itinerary-widget" onClick={closeMobile} className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-[#e5e7db]/40 transition-all duration-200">Preview</Link>
               <Link href="/#comparison" onClick={closeMobile} className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-[#e5e7db]/40 transition-all duration-200">Why Roamly</Link>
-              <Link href="/community" onClick={closeMobile} className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-[#e5e7db]/40 transition-all duration-200">Community</Link>
             </SignedOut>
           </div>
         </div>
@@ -179,8 +234,8 @@ export function SiteNav() {
                   key={item.href}
                   href={item.href}
                   className={`flex flex-col items-center gap-1 px-3 py-1.5 rounded-xl transition-all duration-200 ${isActive
-                      ? "text-[#485C11] font-semibold bg-[#485C11]/10"
-                      : "text-muted-foreground hover:text-foreground"
+                    ? "text-[#485C11] font-semibold bg-[#485C11]/10"
+                    : "text-muted-foreground hover:text-foreground"
                     }`}
                 >
                   <Icon className={`size-5 ${isActive ? "text-[#485C11]" : ""}`} />

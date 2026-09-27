@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
-import { differenceInDays, parseISO, format } from "date-fns";
+import { differenceInDays, parseISO, format, addDays, isBefore, startOfDay } from "date-fns";
 import type { DateRange } from "react-day-picker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +30,7 @@ import {
   Plane,
   Calendar as CalendarIcon,
   MapPin,
+  Compass,
   IndianRupee,
   Hotel,
   Car,
@@ -73,6 +74,8 @@ interface TravelDetails {
 interface ItineraryDay {
   day: string;
   city: string;
+  theme?: string;
+  description?: string;
   morning: string;
   afternoon: string;
   evening: string;
@@ -129,6 +132,7 @@ interface AgentActivity {
   name: string;
   startTime: string;
   endTime: string;
+  description?: string;
   estimatedCost: number;
 }
 
@@ -137,6 +141,8 @@ interface AgentDay {
   date: string;
   locationId: string;
   city: string;
+  theme?: string;
+  description?: string;
   activities: AgentActivity[];
   transit: {
     fromLocationId: string;
@@ -151,6 +157,8 @@ interface AgentDay {
   weather:
     | { available: true; description: string; temperatureMaxC: number; temperatureMinC: number; precipitationProbabilityMax: number }
     | { available: false; reason: string };
+  meals?: string;
+  accommodation?: string;
   accommodationCost: number;
   foodCost: number;
   transportCost: number;
@@ -162,6 +170,7 @@ interface AgentDay {
 interface ItineraryPlanSuccess {
   success: true;
   tripId: number | null;
+  summary?: string | null;
   tripSummary: {
     totalBudget: number;
     estimatedTotalCost: number;
@@ -285,7 +294,8 @@ function adaptAgentResponseToTravelPlan(result: ItineraryPlanSuccess): TravelPla
     const bySlot = (slot: string) => {
       const activity = day.activities.find((a) => a.slot === slot);
       if (!activity) return "Free time";
-      return `${activity.name} (${activity.startTime}–${activity.endTime})`;
+      const desc = activity.description ? `: ${activity.description}` : "";
+      return `${activity.name} (${activity.startTime}–${activity.endTime})${desc}`;
     };
 
     const weatherNote = day.weather.available
@@ -299,11 +309,13 @@ function adaptAgentResponseToTravelPlan(result: ItineraryPlanSuccess): TravelPla
     return {
       day: day.day,
       city: day.city,
+      theme: day.theme,
+      description: day.description,
       morning: bySlot("morning"),
       afternoon: bySlot("afternoon"),
       evening: bySlot("evening"),
-      accommodation: `Hotel / Stay near ${day.city}`,
-      meals: `Local culinary specialties in ${day.city}`,
+      accommodation: day.accommodation || `Hotel / Stay near ${day.city}`,
+      meals: day.meals || `Local culinary specialties in ${day.city}`,
       estimated_cost: `₹${day.dayEstimatedCost.toLocaleString("en-IN")}`,
       guide: day.guide || null,
       weather: day.weather.available
@@ -384,25 +396,34 @@ export default function LLMPage() {
   // Guide selection state (for CHOOSE_GUIDE mode)
   interface AvailableGuide {
     id: string;
-    userId: string;
+    guideId: string;
+    userId?: string;
     name: string;
     profilePhoto: string | null;
     bio: string | null;
     rating: number;
     experienceYears: number;
     hourlyRate: number;
+    currency?: string;
     languages: string[];
     expertise: string[];
-    verificationStatus: string;
+    verificationStatus?: string;
     availabilityStatus: string;
-    isCurrentlyAtLocation: boolean;
-    currentLocation: { id: string; name: string } | null;
-    coveredLocations: { id: string; name: string }[];
+    matchedAreas: string[];
+    nearbyAreas: string[];
+    coverageCount: number;
+    totalSelectedAreas: number;
+    distanceKm: number | null;
+    matchType: "MULTI_AREA" | "EXACT" | "NEARBY";
+    coverageLabel: string;
+    isAllCovered: boolean;
   }
   const [availableGuides, setAvailableGuides] = useState<AvailableGuide[]>([]);
   const [selectedGuide, setSelectedGuide] = useState<AvailableGuide | null>(null);
   const [loadingGuides, setLoadingGuides] = useState(false);
   const [guideSearchCity, setGuideSearchCity] = useState<string>("");
+  const [hasSingleGuideCoveringAll, setHasSingleGuideCoveringAll] = useState(false);
+  const [isGuideUser, setIsGuideUser] = useState(false);
 
   const derivedBudget = deriveBudgetCategory(customBudget);
   const searchTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
@@ -414,10 +435,43 @@ export default function LLMPage() {
     ? { from: parseISO(startDate), to: endDate ? parseISO(endDate) : undefined }
     : undefined;
 
-  const handleDateRangeSelect = (range: DateRange | undefined) => {
-    setStartDate(range?.from ? format(range.from, "yyyy-MM-dd") : "");
-    setEndDate(range?.to ? format(range.to, "yyyy-MM-dd") : "");
-    if (range?.from && range?.to) setIsDatePickerOpen(false);
+  const handleDateRangeSelect = (
+    range: DateRange | undefined,
+    triggerDate?: Date
+  ) => {
+    const clickedDate = triggerDate || range?.to || range?.from;
+    if (!clickedDate) {
+      setStartDate("");
+      setEndDate("");
+      return;
+    }
+
+    // Step 1: If no start date exists yet, or both start & end were already set,
+    // this click initiates a fresh departure date selection.
+    if (!startDate || (startDate && endDate)) {
+      setStartDate(format(clickedDate, "yyyy-MM-dd"));
+      setEndDate("");
+      return;
+    }
+
+    // Step 2: Start date is set, user is picking the return date.
+    const currentStart = parseISO(startDate);
+    if (isBefore(clickedDate, currentStart)) {
+      // If clicked date is earlier than departure, reassign departure
+      setStartDate(format(clickedDate, "yyyy-MM-dd"));
+      setEndDate("");
+    } else {
+      // Valid return date (same day or future day)
+      setEndDate(format(clickedDate, "yyyy-MM-dd"));
+    }
+  };
+
+  const handleDurationPreset = (days: number) => {
+    const base = startDate ? parseISO(startDate) : new Date();
+    const formattedStart = format(base, "yyyy-MM-dd");
+    const formattedEnd = format(addDays(base, Math.max(0, days - 1)), "yyyy-MM-dd");
+    setStartDate(formattedStart);
+    setEndDate(formattedEnd);
   };
 
   const addDestination = (item: DestinationItem) => {
@@ -613,29 +667,94 @@ export default function LLMPage() {
     }
   };
 
-  // Fetch available guides for a destination city
-  const fetchGuidesForDestinations = async (targetCity?: string) => {
+  // Check role and restore persisted guide on mount
+  useEffect(() => {
+    async function checkRoleAndPersistedGuide() {
+      try {
+        const res = await fetch("/api/auth/me");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.authenticated && data.user) {
+            if (data.user.role === "GUIDE") {
+              setIsGuideUser(true);
+              window.location.href = "/guide-dashboard";
+              return;
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Error checking role:", err);
+      }
+
+      try {
+        const savedGuide = localStorage.getItem("roamly_selected_guide");
+        if (savedGuide) {
+          const parsed = JSON.parse(savedGuide);
+          if (parsed && (parsed.id || parsed.guideId)) {
+            setSelectedGuide(parsed);
+            setGuidePreference("CHOOSE_GUIDE");
+            return;
+          }
+        }
+        const storedPlan = localStorage.getItem("roamly_accepted_plan");
+        if (storedPlan) {
+          const parsed = JSON.parse(storedPlan);
+          if (parsed.selectedGuide) {
+            setSelectedGuide(parsed.selectedGuide);
+            setGuidePreference("CHOOSE_GUIDE");
+          }
+        }
+      } catch (e) {
+        console.error("Error reading saved guide:", e);
+      }
+    }
+    checkRoleAndPersistedGuide();
+  }, []);
+
+  // Save selected guide in localStorage on change
+  useEffect(() => {
+    try {
+      if (selectedGuide) {
+        localStorage.setItem("roamly_selected_guide", JSON.stringify(selectedGuide));
+      } else {
+        localStorage.removeItem("roamly_selected_guide");
+      }
+    } catch (e) {
+      console.error("Error saving selected guide to localStorage:", e);
+    }
+  }, [selectedGuide]);
+
+  // Fetch available guides for all selected trip areas
+  const fetchGuidesForDestinations = async () => {
     const destNames = selectedDestinations.length > 0
       ? selectedDestinations.map((d) => d.name)
       : citiesText.split(",").map((s) => s.trim()).filter(Boolean);
 
-    const city = targetCity || (destNames.length > 0 ? destNames[0] : guideSearchCity);
-    if (!city) {
+    if (destNames.length === 0) {
       setAvailableGuides([]);
       return;
     }
 
     setLoadingGuides(true);
-    setGuideSearchCity(city);
+    setGuideSearchCity(destNames[0]);
 
     try {
-      const res = await fetch(`/api/guides?city=${encodeURIComponent(city)}`);
+      const params = new URLSearchParams();
+      params.set("selectedAreas", destNames.join(","));
+      const firstWithCoords = selectedDestinations.find((d) => d.latitude != null && d.longitude != null);
+      if (firstWithCoords) {
+        params.set("latitude", String(firstWithCoords.latitude));
+        params.set("longitude", String(firstWithCoords.longitude));
+      }
+
+      const res = await fetch(`/api/guides?${params.toString()}`);
       if (res.ok) {
         const text = await res.text();
         if (text) {
           const data = JSON.parse(text);
           if (data.guides && Array.isArray(data.guides)) {
             setAvailableGuides(data.guides);
+            setHasSingleGuideCoveringAll(Boolean(data.hasSingleGuideCoveringAll));
           } else {
             setAvailableGuides([]);
           }
@@ -651,9 +770,9 @@ export default function LLMPage() {
     }
   };
 
-  // Automatically fetch guides whenever destination or guide preference changes
+  // Automatically fetch guides whenever destination changes when guide discovery is active
   useEffect(() => {
-    if (guidePreference === "CHOOSE_GUIDE") {
+    if (guidePreference === "CHOOSE_GUIDE" || guidePreference === "NEED_GUIDE") {
       fetchGuidesForDestinations();
     }
   }, [selectedDestinations, citiesText, guidePreference]);
@@ -704,13 +823,7 @@ export default function LLMPage() {
         selectedGuideId: selectedGuide?.id || null,
       };
 
-      // Always use direct API but simulate queue experience
       console.log('🚀 Starting travel plan generation...');
-      setJobStatus('queued');
-      console.log('📋 Job queued - waiting in line...');
-
-      // Simulate "queued" status for 1 second
-      await new Promise(resolve => setTimeout(resolve, 1000));
       setJobStatus('processing');
       console.log('⚙️  Job processing - generating your travel plan (grounded agent router)...');
 
@@ -743,7 +856,8 @@ export default function LLMPage() {
       setAgentResult(data);
       setPlan(adaptAgentResponseToTravelPlan(data));
       setSummary(
-        `Grounded ${data.tripSummary.durationDays}-day trip to ${data.destinations.map((d) => d.name).join(", ")} for ${data.tripSummary.travelerCount} traveler(s). Validation: ${data.routerTrace.validationStatus}.`
+        data.summary ||
+          `Grounded ${data.tripSummary.durationDays}-day trip to ${data.destinations.map((d) => d.name).join(", ")} for ${data.tripSummary.travelerCount} traveler(s). Validation: ${data.routerTrace.validationStatus}.`
       );
       setDecisionStatus("pending");
     } catch (err: unknown) {
@@ -765,6 +879,8 @@ export default function LLMPage() {
       plan,
       summary,
       tripId: agentResult?.tripId ?? null,
+      groundedDays: agentResult && "days" in agentResult ? agentResult.days : [],
+      agentResult: agentResult || null,
       destinations: resolvedDests,
       destinationDetails: selectedDestinations,
       startDate,
@@ -776,7 +892,17 @@ export default function LLMPage() {
       transportation,
       travelerCount,
       guidePreference,
-      selectedGuide: selectedGuide ? { id: selectedGuide.id, name: selectedGuide.name } : null,
+      selectedGuide: selectedGuide
+        ? {
+            id: selectedGuide.id,
+            guideId: selectedGuide.guideId || selectedGuide.id,
+            name: selectedGuide.name,
+            hourlyRate: selectedGuide.hourlyRate,
+            profilePhoto: selectedGuide.profilePhoto,
+            matchedAreas: selectedGuide.matchedAreas,
+            coverageLabel: selectedGuide.coverageLabel,
+          }
+        : null,
       interests: travelInterests,
       acceptedAt: new Date().toISOString(),
     };
@@ -967,47 +1093,164 @@ export default function LLMPage() {
 
             {/* Trip Dates */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Trip Dates
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  Trip Dates
+                </label>
+                {startDate && endDate && (
+                  <span className="text-xs font-semibold text-[#485C11] bg-[#DFECC6]/60 px-2.5 py-0.5 rounded-full">
+                    {differenceInDays(parseISO(endDate), parseISO(startDate)) + 1} Days Trip
+                  </span>
+                )}
+              </div>
+
               <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
                 <PopoverTrigger asChild>
                   <button
                     type="button"
-                    className="w-full flex items-center justify-between gap-2 rounded-md border border-input bg-white px-3 py-2 text-sm shadow-sm transition-colors hover:border-[#8E9C78] focus:outline-none focus:ring-2 focus:ring-[#485C11]/20 focus:border-[#485C11]"
+                    className="w-full flex items-center justify-between gap-2 rounded-lg border border-input bg-white px-3.5 py-2.5 text-sm shadow-sm transition-all hover:border-[#8E9C78] focus:outline-none focus:ring-2 focus:ring-[#485C11]/20 focus:border-[#485C11]"
                   >
-                    <span className="flex items-center gap-2 text-left">
+                    <span className="flex items-center gap-2.5 text-left">
                       <CalendarIcon className="size-4 text-[#485C11] shrink-0" />
                       {startDate ? (
-                        <span className="text-gray-900">
-                          {format(parseISO(startDate), "MMM d, yyyy")}
-                          {endDate ? ` – ${format(parseISO(endDate), "MMM d, yyyy")}` : " – Select end date"}
+                        <span className="text-gray-900 font-medium">
+                          {format(parseISO(startDate), "EEE, MMM d, yyyy")}
+                          <span className="text-gray-400 mx-1.5">→</span>
+                          {endDate ? (
+                            <span>{format(parseISO(endDate), "EEE, MMM d, yyyy")}</span>
+                          ) : (
+                            <span className="text-amber-600 font-normal italic">Select return date</span>
+                          )}
                         </span>
                       ) : (
-                        <span className="text-muted-foreground">Select trip dates</span>
+                        <span className="text-muted-foreground">Select departure & return dates</span>
                       )}
                     </span>
-                    {startDate && endDate && (
-                      <span className="text-xs font-semibold text-[#485C11] bg-[#DFECC6]/50 px-2 py-0.5 rounded-full shrink-0">
-                        {differenceInDays(parseISO(endDate), parseISO(startDate)) + 1} days
-                      </span>
-                    )}
+                    <span className="text-xs text-gray-500 font-medium shrink-0">
+                      {startDate && endDate
+                        ? `${differenceInDays(parseISO(endDate), parseISO(startDate)) + 1} days`
+                        : "Choose dates"}
+                    </span>
                   </button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="range"
-                    numberOfMonths={2}
-                    defaultMonth={dateRange?.from}
-                    selected={dateRange}
-                    onSelect={handleDateRangeSelect}
-                    disabled={{ before: new Date() }}
-                    className="rounded-lg"
-                  />
+                <PopoverContent className="w-auto p-0 shadow-2xl border border-gray-200/80 rounded-2xl overflow-hidden bg-white max-w-[95vw]" align="start">
+                  {/* Top Status & Date Overview Bar */}
+                  <div className="p-3.5 bg-gradient-to-r from-[#FAFBF8] to-[#F4F6F0] border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 sm:gap-3 text-xs">
+                      <div className={`px-2.5 py-1.5 rounded-lg border ${startDate ? "bg-white border-[#485C11]/40 shadow-xs" : "bg-gray-50 border-gray-200 text-gray-400"}`}>
+                        <div className="text-[10px] uppercase font-bold tracking-wider text-gray-400">Departure</div>
+                        <div className="font-semibold text-gray-900">
+                          {startDate ? format(parseISO(startDate), "MMM d, yyyy") : "Select date"}
+                        </div>
+                      </div>
+                      <ArrowRight className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                      <div className={`px-2.5 py-1.5 rounded-lg border ${endDate ? "bg-white border-[#485C11]/40 shadow-xs" : startDate ? "bg-amber-50 border-amber-300 text-amber-900 animate-pulse" : "bg-gray-50 border-gray-200 text-gray-400"}`}>
+                        <div className="text-[10px] uppercase font-bold tracking-wider text-gray-400">Return</div>
+                        <div className="font-semibold">
+                          {endDate ? format(parseISO(endDate), "MMM d, yyyy") : startDate ? "Pick return date" : "Select date"}
+                        </div>
+                      </div>
+                    </div>
+
+                    {startDate && endDate && (
+                      <div className="flex items-center gap-1.5 self-start sm:self-auto bg-[#485C11]/10 text-[#485C11] text-xs font-semibold px-2.5 py-1 rounded-full">
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>{differenceInDays(parseISO(endDate), parseISO(startDate)) + 1} Days Trip</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Quick Duration Shortcut Pills */}
+                  <div className="px-3.5 py-2 bg-white border-b border-gray-100 flex items-center gap-1.5 flex-wrap text-xs">
+                    <span className="text-gray-500 font-medium text-[11px] mr-1">Duration:</span>
+                    {[
+                      { label: "2 Days", days: 2 },
+                      { label: "3 Days", days: 3 },
+                      { label: "5 Days", days: 5 },
+                      { label: "7 Days (1 Wk)", days: 7 },
+                      { label: "10 Days", days: 10 },
+                      { label: "14 Days (2 Wks)", days: 14 },
+                    ].map((preset) => {
+                      const isActive =
+                        startDate &&
+                        endDate &&
+                        differenceInDays(parseISO(endDate), parseISO(startDate)) + 1 === preset.days;
+                      return (
+                        <button
+                          key={preset.days}
+                          type="button"
+                          onClick={() => handleDurationPreset(preset.days)}
+                          className={`px-2.5 py-1 rounded-full border text-[11px] transition-all cursor-pointer font-medium ${
+                            isActive
+                              ? "bg-[#485C11] text-white border-[#485C11]"
+                              : "bg-gray-50 hover:bg-[#DFECC6]/40 border-gray-200 text-gray-700 hover:border-[#485C11]/40"
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Calendar view */}
+                  <div className="p-2 sm:p-3 overflow-x-auto">
+                    <Calendar
+                      mode="range"
+                      numberOfMonths={2}
+                      defaultMonth={dateRange?.from || new Date()}
+                      selected={dateRange}
+                      onSelect={handleDateRangeSelect}
+                      disabled={{ before: startOfDay(new Date()) }}
+                      className="rounded-lg"
+                    />
+                  </div>
+
+                  {/* Footer actions */}
+                  <div className="p-3 bg-[#FAFBF8] border-t border-gray-100 flex items-center justify-between gap-2">
+                    <div className="text-[11px] text-gray-500 hidden sm:block">
+                      {!startDate
+                        ? "1️⃣ Click a date to choose departure"
+                        : !endDate
+                        ? "2️⃣ Click a date to choose return"
+                        : "✅ Range selected! Click Apply Dates to confirm"}
+                    </div>
+
+                    <div className="flex items-center gap-2 ml-auto">
+                      {(startDate || endDate) && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setStartDate("");
+                            setEndDate("");
+                          }}
+                          className="h-8 text-xs text-gray-500 hover:text-gray-900 cursor-pointer"
+                        >
+                          Clear
+                        </Button>
+                      )}
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={!startDate}
+                        onClick={() => {
+                          if (startDate && !endDate) {
+                            setEndDate(startDate);
+                          }
+                          setIsDatePickerOpen(false);
+                        }}
+                        className="h-8 text-xs bg-[#485C11] hover:bg-[#3d4f0e] text-white px-3 font-medium cursor-pointer"
+                      >
+                        <Check className="w-3.5 h-3.5 mr-1" />
+                        Apply Dates
+                      </Button>
+                    </div>
+                  </div>
                 </PopoverContent>
               </Popover>
               <p className="text-xs text-gray-500 mt-1.5">
-                Pick a start and end date — both months are shown so you can select the full range at once.
+                Pick departure and return dates, or select a start date and click a duration shortcut.
               </p>
             </div>
 
@@ -1114,275 +1357,364 @@ export default function LLMPage() {
               </div>
             </div>
 
-            {/* Traveler Count & Guide Preference */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Traveler Count
-                </label>
-                <div className="flex gap-2 flex-wrap">
-                  {travelerCountOptions.map((count) => (
-                    <Button
-                      key={count}
-                      type="button"
-                      size="sm"
-                      variant={travelerCount === count ? "default" : "outline"}
-                      onClick={() => setTravelerCount(count)}
-                    >
-                      {count}
-                      {count === 5 ? "+" : ""}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Guide Preference
-                </label>
-                <div className="flex gap-2 flex-wrap">
-                  {guidePreferenceOptions.map((option) => (
-                    <Button
-                      key={option.value}
-                      type="button"
-                      size="sm"
-                      variant={guidePreference === option.value ? "default" : "outline"}
-                      onClick={() => {
-                        setGuidePreference(option.value);
-                        if (option.value === "CHOOSE_GUIDE") {
-                          fetchGuidesForDestinations();
-                        } else {
-                          setSelectedGuide(null);
-                          setAvailableGuides([]);
-                        }
-                      }}
-                    >
-                      {option.label}
-                    </Button>
-                  ))}
-                </div>
+            {/* Traveler Count */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Traveler Count
+              </label>
+              <div className="flex gap-2 flex-wrap">
+                {travelerCountOptions.map((count) => (
+                  <Button
+                    key={count}
+                    type="button"
+                    size="sm"
+                    variant={travelerCount === count ? "default" : "outline"}
+                    onClick={() => setTravelerCount(count)}
+                  >
+                    {count}
+                    {count === 5 ? "+" : ""}
+                  </Button>
+                ))}
               </div>
             </div>
 
-            {/* ─── Auto-matching Guide Banner (visible when NEED_GUIDE is selected) ─── */}
-            {guidePreference === "NEED_GUIDE" && (
-              <div className="mt-4 rounded-2xl border border-[#DFECC6] bg-gradient-to-r from-[#DFECC6]/40 via-[#f4f7ee] to-white p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-[#485C11]/15 flex items-center justify-center shrink-0">
-                    <CheckCircle className="w-5 h-5 text-[#485C11]" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-[#1a1a1a]">Auto-Assigning Top-Rated Local Guide</p>
-                    <p className="text-[11px] text-[#6b7280]">
-                      Roamly will match and assign a verified licensed guide for your destination.
-                    </p>
-                  </div>
-                </div>
-                <Button
+            {/* ─── Do You Need a Tour Guide? (Section 2 & 13) ─── */}
+            <div className="rounded-2xl border border-[#DFECC6] bg-gradient-to-br from-white via-[#FAFBF8] to-[#f4f7ee] p-5 shadow-xs">
+              <div className="flex items-center gap-2 mb-1">
+                <Compass className="w-5 h-5 text-[#485C11]" />
+                <h3 className="text-base font-bold text-[#1a1a1a]">Do you need a tour guide?</h3>
+              </div>
+              <p className="text-xs text-[#6b7280] mb-4">
+                Connect with verified local guides tailored for your trip destinations.
+              </p>
+
+              {/* Options: [ No, Continue Without Guide ] [ Yes, Find a Guide ] */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-2">
+                <button
                   type="button"
-                  size="sm"
-                  variant="outline"
+                  onClick={() => {
+                    setGuidePreference("NO_GUIDE");
+                    setSelectedGuide(null);
+                    setAvailableGuides([]);
+                  }}
+                  className={`flex items-center justify-between p-3.5 rounded-xl border-2 text-left transition-all ${
+                    guidePreference === "NO_GUIDE"
+                      ? "border-[#485C11] bg-[#485C11]/5 text-[#1a1a1a] shadow-xs ring-1 ring-[#485C11]/30"
+                      : "border-[#e5e7db] bg-white text-[#4a5043] hover:border-[#8E9C78]"
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                      guidePreference === "NO_GUIDE" ? "border-[#485C11] bg-[#485C11]" : "border-[#9ca3af]"
+                    }`}>
+                      {guidePreference === "NO_GUIDE" && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                    </div>
+                    <div>
+                      <span className="text-sm font-semibold block">No, Continue Without Guide</span>
+                      <span className="text-[11px] text-[#6b7280]">Self-guided trip planning</span>
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => {
                     setGuidePreference("CHOOSE_GUIDE");
                     fetchGuidesForDestinations();
                   }}
-                  className="text-xs shrink-0 bg-white hover:bg-[#DFECC6]/30 border-[#8E9C78]/50"
+                  className={`flex items-center justify-between p-3.5 rounded-xl border-2 text-left transition-all ${
+                    guidePreference === "CHOOSE_GUIDE" || guidePreference === "NEED_GUIDE"
+                      ? "border-[#485C11] bg-[#485C11]/5 text-[#1a1a1a] shadow-xs ring-1 ring-[#485C11]/30"
+                      : "border-[#e5e7db] bg-white text-[#4a5043] hover:border-[#8E9C78]"
+                  }`}
                 >
-                  <User className="w-3.5 h-3.5 mr-1 text-[#485C11]" />
-                  Browse & Pick Specific Guide
-                </Button>
-              </div>
-            )}
-
-            {/* ─── Guide Picker Panel (visible when CHOOSE_GUIDE is selected) ─── */}
-            {guidePreference === "CHOOSE_GUIDE" && (
-              <div className="mt-4 rounded-2xl border border-[#e5e7db] bg-gradient-to-br from-[#fafbf8] to-[#f5f7f0] p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-xl bg-[#485C11]/10 flex items-center justify-center">
-                      <User className="w-4 h-4 text-[#485C11]" />
+                  <div className="flex items-center gap-2.5">
+                    <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                      guidePreference === "CHOOSE_GUIDE" || guidePreference === "NEED_GUIDE"
+                        ? "border-[#485C11] bg-[#485C11]"
+                        : "border-[#9ca3af]"
+                    }`}>
+                      {(guidePreference === "CHOOSE_GUIDE" || guidePreference === "NEED_GUIDE") && (
+                        <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                      )}
                     </div>
                     <div>
-                      <h3 className="text-sm font-bold text-[#1a1a1a]">Choose Your Guide</h3>
-                      <p className="text-xs text-[#6b7280]">
-                        {guideSearchCity ? `Showing guides for ${guideSearchCity}` : "Add a destination to see available guides"}
-                      </p>
+                      <span className="text-sm font-semibold block">Yes, Find a Guide</span>
+                      <span className="text-[11px] text-[#6b7280]">Discover licensed guides for your areas</span>
                     </div>
+                  </div>
+                </button>
+              </div>
+
+            {/* ─── Guide Discovery Panel (visible when Yes, Find a Guide is selected) ─── */}
+            {(guidePreference === "CHOOSE_GUIDE" || guidePreference === "NEED_GUIDE") && (
+              <div className="mt-4 rounded-2xl border border-[#DFECC6] bg-gradient-to-br from-[#fafbf8] via-white to-[#f4f7ee] p-5 shadow-xs">
+                {/* Header with Refresh */}
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h4 className="text-sm font-bold text-[#1a1a1a] flex items-center gap-1.5">
+                      <Compass className="w-4 h-4 text-[#485C11]" />
+                      Recommended Guides
+                    </h4>
+                    <p className="text-xs text-[#6b7280]">
+                      Verified, licensed guides available for your trip
+                    </p>
                   </div>
                   {(selectedDestinations.length > 0 || citiesText.trim()) && (
                     <Button
                       type="button"
                       size="sm"
                       variant="outline"
-                      onClick={() => fetchGuidesForDestinations(guideSearchCity)}
-                      className="text-xs"
+                      onClick={() => fetchGuidesForDestinations()}
+                      disabled={loadingGuides}
+                      className="text-xs h-8 border-[#DFECC6] hover:bg-[#DFECC6]/30 text-[#485C11]"
                     >
-                      <RotateCcw className="w-3 h-3 mr-1" />
+                      <RotateCcw className={`w-3 h-3 mr-1 ${loadingGuides ? "animate-spin" : ""}`} />
                       Refresh
                     </Button>
                   )}
                 </div>
 
-                {/* Destination area switcher if multiple stops exist */}
-                {selectedDestinations.length > 1 && (
-                  <div className="flex items-center gap-1.5 flex-wrap mb-4 pb-3 border-b border-[#e5e7db]/70">
-                    <span className="text-[11px] font-semibold text-[#6b7280]">Destination Area:</span>
-                    {selectedDestinations.map((dest) => {
-                      const isCurrent = guideSearchCity.toLowerCase() === dest.name.toLowerCase();
-                      return (
-                        <button
-                          key={dest.name}
-                          type="button"
-                          onClick={() => fetchGuidesForDestinations(dest.name)}
-                          className={`text-xs px-2.5 py-1 rounded-full font-medium transition-all ${
-                            isCurrent
-                              ? "bg-[#485C11] text-white shadow-xs"
-                              : "bg-white border border-[#e5e7db] text-[#4a5043] hover:border-[#8E9C78]"
-                          }`}
-                        >
-                          📍 {dest.name}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
+                {/* Selected Areas Pill Tags */}
+                {(() => {
+                  const currentAreas = selectedDestinations.length > 0
+                    ? selectedDestinations.map((d) => d.name)
+                    : citiesText.split(",").map((s) => s.trim()).filter(Boolean);
 
+                  return (
+                    <div className="mb-4 p-3 rounded-xl bg-white border border-[#e5e7db]">
+                      <span className="text-[11px] font-semibold text-[#485C11] uppercase tracking-wider block mb-1.5">
+                        Your Selected Trip Areas:
+                      </span>
+                      {currentAreas.length === 0 ? (
+                        <p className="text-xs text-[#9ca3af] italic">
+                          Enter or select destinations above to discover guides for those areas.
+                        </p>
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5 items-center">
+                          {currentAreas.map((area, idx) => (
+                            <span
+                              key={`${area}-${idx}`}
+                              className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-[#DFECC6]/60 text-[#38480e] border border-[#8E9C78]/30"
+                            >
+                              📍 {area}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Multi-Area Coverage Notice */}
+                      {currentAreas.length > 1 && availableGuides.length > 0 && (
+                        <div className="mt-2.5 pt-2 border-t border-[#f0f2eb]">
+                          {hasSingleGuideCoveringAll ? (
+                            <div className="flex items-center gap-1.5 text-xs font-medium text-[#485C11]">
+                              <CheckCircle className="w-3.5 h-3.5" />
+                              <span>Covers all selected areas</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5 text-xs text-[#b45309]">
+                              <AlertCircle className="w-3.5 h-3.5" />
+                              <span>No single guide covers all selected areas. Available guides are shown below grouped by coverage.</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Guides Loading / Empty / List */}
                 {loadingGuides ? (
-                  <div className="flex items-center justify-center py-8">
-                    <Loader2 className="w-6 h-6 text-[#485C11] animate-spin" />
-                    <span className="ml-2 text-sm text-[#6b7280]">Searching for guides…</span>
+                  <div className="flex flex-col items-center justify-center py-8 bg-white/50 rounded-xl border border-dashed border-[#DFECC6]">
+                    <Loader2 className="w-6 h-6 text-[#485C11] animate-spin mb-2" />
+                    <span className="text-xs text-[#6b7280]">Searching eligible guides for your selected areas…</span>
                   </div>
                 ) : availableGuides.length === 0 ? (
-                  <div className="text-center py-8">
-                    <User className="w-10 h-10 text-[#9ca3af] mx-auto mb-2" />
-                    <p className="text-sm text-[#6b7280]">
-                      {guideSearchCity
-                        ? `No verified guides found for ${guideSearchCity}. Try "Need a Guide" to auto-assign one.`
-                        : "Enter a destination above to browse available guides."}
+                  <div className="text-center py-8 bg-white/60 rounded-xl border border-dashed border-[#e5e7db] p-4">
+                    <User className="w-8 h-8 text-[#9ca3af] mx-auto mb-2" />
+                    <p className="text-xs font-medium text-[#4a5043]">
+                      No verified and available guides found matching your selected areas.
+                    </p>
+                    <p className="text-[11px] text-[#9ca3af] mt-1">
+                      You can continue planning without a guide, or try searching for another nearby area.
                     </p>
                   </div>
                 ) : (
-                  <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
+                  <div className="space-y-3 max-h-[440px] overflow-y-auto pr-1">
                     {availableGuides.map((guide) => {
                       const isSelected = selectedGuide?.id === guide.id;
                       return (
-                        <button
+                        <div
                           key={guide.id}
-                          type="button"
-                          onClick={() => setSelectedGuide(isSelected ? null : guide)}
-                          className={`w-full text-left rounded-2xl border-2 p-4 transition-all duration-200 hover:shadow-md ${
+                          className={`rounded-2xl border-2 p-4 transition-all duration-200 bg-white ${
                             isSelected
-                              ? "border-[#485C11] bg-[#485C11]/5 shadow-md ring-2 ring-[#485C11]/20"
-                              : "border-[#e5e7db] bg-white hover:border-[#8E9C78]"
+                              ? "border-[#485C11] shadow-md ring-2 ring-[#485C11]/20 bg-[#f9faf7]"
+                              : "border-[#e5e7db] hover:border-[#8E9C78]/70 hover:shadow-xs"
                           }`}
                         >
-                          <div className="flex items-start gap-3">
-                            {/* Guide Photo */}
-                            <div className={`w-14 h-14 rounded-xl overflow-hidden shrink-0 border-2 ${
-                              isSelected ? "border-[#485C11]" : "border-[#e5e7db]"
-                            }`}>
-                              {guide.profilePhoto ? (
-                                <img
-                                  src={guide.profilePhoto}
-                                  alt={guide.name}
-                                  className="w-full h-full object-cover"
-                                />
-                              ) : (
-                                <div className="w-full h-full bg-[#DFECC6] flex items-center justify-center">
+                          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                            <div className="flex items-start gap-3 flex-1 min-w-0">
+                              {/* Guide Photo */}
+                              <div className="w-14 h-14 rounded-xl overflow-hidden shrink-0 border border-[#e5e7db] bg-[#DFECC6]/40 flex items-center justify-center">
+                                {guide.profilePhoto ? (
+                                  <img
+                                    src={guide.profilePhoto}
+                                    alt={guide.name}
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
                                   <User className="w-6 h-6 text-[#485C11]" />
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Guide Info */}
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <p className="text-sm font-bold text-[#1a1a1a] truncate">{guide.name}</p>
-                                {isSelected && (
-                                  <span className="shrink-0 inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#485C11] text-white">
-                                    <Check className="w-3 h-3" /> Selected
-                                  </span>
                                 )}
                               </div>
 
-                              <div className="flex items-center gap-3 mt-1">
-                                <span className="inline-flex items-center gap-1 text-xs text-amber-600">
-                                  <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
-                                  {guide.rating.toFixed(1)}
-                                </span>
-                                <span className="inline-flex items-center gap-1 text-xs text-[#6b7280]">
-                                  <Award className="w-3 h-3" />
-                                  {guide.experienceYears}y exp
-                                </span>
-                                <span className="inline-flex items-center gap-1 text-xs font-semibold text-[#485C11]">
-                                  <IndianRupee className="w-3 h-3" />
-                                  {guide.hourlyRate}/hr
-                                </span>
-                              </div>
+                              {/* Details */}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <h5 className="text-sm font-bold text-[#1a1a1a]">{guide.name}</h5>
+                                  <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    <Check className="w-2.5 h-2.5" /> Available
+                                  </span>
+                                  {guide.matchType && (
+                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                      guide.matchType === "MULTI_AREA"
+                                        ? "bg-purple-50 text-purple-700 border border-purple-200"
+                                        : guide.matchType === "EXACT"
+                                        ? "bg-blue-50 text-blue-700 border border-blue-200"
+                                        : "bg-amber-50 text-amber-700 border border-amber-200"
+                                    }`}>
+                                      {guide.matchType === "MULTI_AREA"
+                                        ? "MULTI-AREA MATCH"
+                                        : guide.matchType === "EXACT"
+                                        ? "EXACT MATCH"
+                                        : "NEARBY MATCH"}
+                                    </span>
+                                  )}
+                                </div>
 
-                              {/* Languages */}
-                              {guide.languages.length > 0 && (
-                                <div className="flex items-center gap-1 mt-1.5">
-                                  <Languages className="w-3 h-3 text-[#9ca3af] shrink-0" />
-                                  <div className="flex gap-1 flex-wrap">
-                                    {guide.languages.slice(0, 4).map((lang) => (
-                                      <span key={lang} className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#f0f4e8] text-[#485C11] font-medium">
+                                {/* Price & Experience */}
+                                <div className="flex items-center gap-3 mt-1 text-xs">
+                                  <span className="font-bold text-[#485C11]">
+                                    ₹{guide.hourlyRate}/hour
+                                  </span>
+                                  <span className="text-[#6b7280]">
+                                    {guide.experienceYears}y exp
+                                  </span>
+                                  {guide.rating > 0 && (
+                                    <span className="inline-flex items-center text-amber-600 font-medium">
+                                      ★ {guide.rating.toFixed(1)}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Coverage & Matches */}
+                                <div className="mt-2 space-y-1">
+                                  {guide.matchedAreas && guide.matchedAreas.length > 0 && (
+                                    <div className="flex items-center gap-1.5 text-xs text-[#38480e]">
+                                      <span className="font-semibold">Covers:</span>
+                                      <span>{guide.matchedAreas.join(", ")}</span>
+                                    </div>
+                                  )}
+
+                                  {guide.coverageLabel && (
+                                    <div className="text-[11px] font-medium text-[#485C11]">
+                                      ✓ {guide.coverageLabel}
+                                    </div>
+                                  )}
+
+                                  {guide.nearbyAreas && guide.nearbyAreas.length > 0 && (
+                                    <div className="text-[11px] text-[#b45309]">
+                                      📍 Nearby: {guide.nearbyAreas.join(", ")}
+                                      {guide.distanceKm != null && ` (${guide.distanceKm.toFixed(1)} km away)`}
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Languages */}
+                                {guide.languages && guide.languages.length > 0 && (
+                                  <div className="flex items-center gap-1 mt-2 flex-wrap">
+                                    <Languages className="w-3 h-3 text-[#9ca3af]" />
+                                    {guide.languages.slice(0, 3).map((lang) => (
+                                      <span
+                                        key={lang}
+                                        className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 font-medium"
+                                      >
                                         {lang}
                                       </span>
                                     ))}
-                                    {guide.languages.length > 4 && (
-                                      <span className="text-[10px] text-[#9ca3af]">+{guide.languages.length - 4}</span>
+                                    {guide.languages.length > 3 && (
+                                      <span className="text-[10px] text-gray-400">+{guide.languages.length - 3}</span>
                                     )}
                                   </div>
-                                </div>
-                              )}
+                                )}
 
-                              {/* Expertise */}
-                              {guide.expertise.length > 0 && (
-                                <div className="flex gap-1 flex-wrap mt-1.5">
-                                  {guide.expertise.slice(0, 3).map((exp) => (
-                                    <span key={exp} className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#e8eaf0] text-[#4a5043] font-medium">
-                                      {exp}
-                                    </span>
-                                  ))}
-                                  {guide.expertise.length > 3 && (
-                                    <span className="text-[10px] text-[#9ca3af]">+{guide.expertise.length - 3}</span>
-                                  )}
-                                </div>
-                              )}
+                                {/* Bio */}
+                                {guide.bio && (
+                                  <p className="text-xs text-[#6b7280] mt-1.5 line-clamp-2 italic">
+                                    &ldquo;{guide.bio}&rdquo;
+                                  </p>
+                                )}
+                              </div>
+                            </div>
 
-                              {guide.bio && (
-                                <p className="text-xs text-[#6b7280] mt-1.5 line-clamp-2 italic">
-                                  &ldquo;{guide.bio}&rdquo;
-                                </p>
+                            {/* Select Action Button */}
+                            <div className="sm:self-center shrink-0">
+                              {isSelected ? (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  onClick={() => setSelectedGuide(null)}
+                                  className="bg-[#485C11] hover:bg-[#38480e] text-white text-xs rounded-xl shadow-xs"
+                                >
+                                  <Check className="w-3.5 h-3.5 mr-1" /> Selected
+                                </Button>
+                              ) : (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => setSelectedGuide(guide)}
+                                  className="text-xs border-[#485C11]/40 text-[#485C11] hover:bg-[#DFECC6]/40 rounded-xl"
+                                >
+                                  Select Guide
+                                </Button>
                               )}
                             </div>
                           </div>
-                        </button>
+                        </div>
                       );
                     })}
                   </div>
                 )}
 
-                {/* Selected guide confirmation */}
+                {/* Selected Guide Confirmation Banner */}
                 {selectedGuide && (
-                  <div className="mt-3 flex items-center gap-2 p-3 rounded-xl bg-[#DFECC6]/50 border border-[#8E9C78]/40">
-                    <CheckCircle className="w-4 h-4 text-[#485C11] shrink-0" />
-                    <p className="text-xs font-medium text-[#38480e]">
-                      <span className="font-bold">{selectedGuide.name}</span> will be assigned as your local guide
-                      {" · "}
-                      <span className="text-[#485C11]">₹{selectedGuide.hourlyRate}/hr</span>
-                    </p>
+                  <div className="mt-4 p-3.5 rounded-xl bg-[#DFECC6]/60 border border-[#8E9C78]/50 flex items-center justify-between gap-3 shadow-xs">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-full bg-[#485C11] text-white flex items-center justify-center font-bold text-xs">
+                        {selectedGuide.name.charAt(0)}
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-[#1a1a1a]">
+                          Selected Guide: {selectedGuide.name}
+                          <span className="ml-2 font-semibold text-[#485C11]">₹{selectedGuide.hourlyRate}/hour</span>
+                        </div>
+                        <p className="text-[11px] text-[#4a5043]">
+                          {selectedGuide.coverageLabel || (selectedGuide.matchedAreas?.length ? `Covers ${selectedGuide.matchedAreas.join(" + ")}` : "Verified Guide")}
+                        </p>
+                      </div>
+                    </div>
                     <button
                       type="button"
                       onClick={() => setSelectedGuide(null)}
-                      className="ml-auto text-[#6b7280] hover:text-red-500 transition-colors"
+                      className="text-xs text-[#6b7280] hover:text-red-600 transition-colors font-medium px-2 py-1"
                     >
-                      <X className="w-3.5 h-3.5" />
+                      Remove
                     </button>
                   </div>
                 )}
               </div>
             )}
+          </div>
 
             {/* Travel Interests (Combined Multi-select Dropdown) */}
             <div>
@@ -1621,11 +1953,17 @@ export default function LLMPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2.5 w-full sm:w-auto">
+                    <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full sm:w-auto">
+                      <Link href="/trip-map" className="w-full sm:w-auto">
+                        <Button className="w-full bg-[#485C11] hover:bg-[#3a4d0d] text-white rounded-full px-5 shadow-sm">
+                          <MapPin className="mr-2 size-4 text-[#DFECC6]" />
+                          Open Trip Map & Hotels
+                        </Button>
+                      </Link>
                       <Link href="/mapcalendar" className="w-full sm:w-auto">
-                        <Button className="w-full bg-[#485C11] hover:bg-[#3a4d0d] text-white rounded-full px-6 shadow-sm">
+                        <Button variant="outline" className="w-full border-[#485C11]/40 hover:bg-[#485C11]/10 text-[#485C11] rounded-full px-5 shadow-sm">
                           <CalendarIcon className="mr-2 size-4" />
-                          View in My Schedule
+                          View Schedule
                           <ArrowRight className="ml-2 size-4" />
                         </Button>
                       </Link>
@@ -1709,9 +2047,14 @@ export default function LLMPage() {
                 <div className="space-y-6">
                   {(plan?.itinerary || []).map((day, idx) => (
                     <div key={idx} className="border-l-2 border-[#485C11]/30 pl-4 py-1">
-                      <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+                      <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
                         <div className="flex items-center gap-2 flex-wrap">
                           <h3 className="font-semibold text-lg text-gray-900">{day.day}</h3>
+                          {day.theme && (
+                            <Badge variant="outline" className="text-xs bg-[#DFECC6]/40 border-[#8E9C78]/50 text-[#303f0b] font-medium">
+                              {day.theme}
+                            </Badge>
+                          )}
                           <Badge variant="outline" className="text-xs">
                             <MapPin className="h-3 w-3 mr-1 text-[#485C11]" />
                             {day.city}
@@ -1728,6 +2071,12 @@ export default function LLMPage() {
                           {day.estimated_cost}
                         </Badge>
                       </div>
+
+                      {day.description && (
+                        <p className="text-xs text-gray-600 mb-3 italic leading-relaxed">
+                          {day.description}
+                        </p>
+                      )}
 
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
                         <div className="p-2.5 rounded-xl bg-gray-50/70 border border-gray-100">

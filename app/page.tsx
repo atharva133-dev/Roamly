@@ -309,14 +309,8 @@ export default function HomePage() {
         {/* ===== HERO UPPER AREA (Left Typography & Actions) ===== */}
         <div className="relative z-10 w-full px-6 sm:px-10 lg:px-16 xl:px-20 pt-8 sm:pt-14 pb-4">
           <div className="max-w-2xl">
-            {/* Pill Badge matching reference */}
-            <div className="animate-fade-in inline-flex items-center gap-2 rounded-full border border-[#8E9C78]/30 bg-[#DFECC6]/60 backdrop-blur-xs px-4 py-1.5 text-xs font-semibold text-[#38480e]">
-              <Sparkles className="size-3.5 fill-[#38480e]" />
-              <span>AI Powered Travel Planning</span>
-            </div>
-
             {/* Main Headline */}
-            <h1 className="animate-fade-in-up mt-5 text-4xl sm:text-5xl md:text-6xl lg:text-[4.25rem] xl:text-[4.85rem] font-serif font-black tracking-tight text-[#1a1a1a] leading-[1.06]">
+            <h1 className="animate-fade-in-up text-4xl sm:text-5xl md:text-6xl lg:text-[4.25rem] xl:text-[4.85rem] font-serif font-black tracking-tight text-[#1a1a1a] leading-[1.06]">
               Explore the World,
               <br />
               <span className="text-[#38480e]">Travel Carefree</span>
@@ -351,41 +345,6 @@ export default function HomePage() {
                   Become a Guide
                 </Link>
               </Button>
-
-              <Button
-                asChild
-                variant="ghost"
-                className="h-12 rounded-full px-6 text-sm font-semibold text-[#4e5546] hover:text-[#1a1a1a] hover:bg-black/5 transition-all duration-300"
-              >
-                <a href="#itinerary-widget" className="flex items-center gap-2">
-                  <span className="inline-flex size-5 items-center justify-center rounded-full bg-[#1a1a1a] text-white shadow-xs">
-                    <svg width="8" height="10" viewBox="0 0 10 12" fill="currentColor">
-                      <polygon points="2,1 9,6 2,11" />
-                    </svg>
-                  </span>
-                  How It Works
-                </a>
-              </Button>
-            </div>
-
-            {/* 100K+ Happy Travelers proof */}
-            <div className="animate-fade-in-up-delay-2 mt-8 flex items-center gap-3">
-              <div className="flex -space-x-2.5">
-                {[
-                  "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=120&q=80",
-                  "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=120&q=80",
-                  "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=120&q=80",
-                  "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=120&q=80",
-                ].map((src, i) => (
-                  <div key={i} className="relative size-9 rounded-full border-2 border-white overflow-hidden shadow-sm">
-                    <Image src={src} alt="Traveler avatar" fill className="object-cover" sizes="36px" />
-                  </div>
-                ))}
-              </div>
-              <div>
-                <div className="text-base font-bold text-[#1a1a1a] leading-tight">100K+</div>
-                <div className="text-xs text-[#5f6756]">Happy Travelers</div>
-              </div>
             </div>
           </div>
         </div>
@@ -396,7 +355,7 @@ export default function HomePage() {
           <div className="w-full max-w-[1240px] mx-auto px-4 sm:px-6 lg:px-8">
             <div className="bg-white/95 backdrop-blur-xl rounded-3xl md:rounded-full border border-white/80 shadow-2xl p-2.5 sm:p-3">
               <div className="grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-0 md:items-center">
-                
+
                 {/* 1. Where to? */}
                 <div className="md:col-span-3 flex items-center gap-3.5 px-4 py-2.5 border-b md:border-b-0 md:border-r border-[#e5e7db]">
                   <div className="flex size-9 items-center justify-center rounded-full bg-[#DFECC6]/70 text-[#38480e] shrink-0">
@@ -504,11 +463,11 @@ export default function HomePage() {
           {/* Stats Badges Row (Below Search Bar across full width) */}
           <div className="w-full max-w-[1240px] mx-auto px-6 sm:px-8 pt-5 pb-8">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 items-center">
-              
+
               {/* 50K+ */}
               <div className="flex items-center gap-3">
                 <div className="flex size-10 items-center justify-center rounded-full bg-[#DFECC6]/60 text-[#38480e] shrink-0">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/></svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20" /></svg>
                 </div>
                 <div>
                   <div className="text-sm sm:text-base font-bold text-[#1a1a1a] leading-tight">50K+</div>
@@ -530,7 +489,7 @@ export default function HomePage() {
               {/* 100% */}
               <div className="flex items-center gap-3">
                 <div className="flex size-10 items-center justify-center rounded-full bg-[#DFECC6]/60 text-[#38480e] shrink-0">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>
                 </div>
                 <div>
                   <div className="text-sm sm:text-base font-bold text-[#1a1a1a] leading-tight">100%</div>
@@ -541,7 +500,7 @@ export default function HomePage() {
               {/* Lower Costs */}
               <div className="flex items-center gap-3">
                 <div className="flex size-10 items-center justify-center rounded-full bg-[#DFECC6]/60 text-[#38480e] shrink-0">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a10 10 0 0 1 10 10c0 5.5-4.5 10-10 10S2 17.5 2 12c0-3 1.5-6 4-7.5"/><path d="M7 14c2-4 7-6 10-6"/></svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a10 10 0 0 1 10 10c0 5.5-4.5 10-10 10S2 17.5 2 12c0-3 1.5-6 4-7.5" /><path d="M7 14c2-4 7-6 10-6" /></svg>
                 </div>
                 <div>
                   <div className="text-sm sm:text-base font-bold text-[#1a1a1a] leading-tight">Lower Costs</div>
@@ -937,7 +896,7 @@ export default function HomePage() {
       <section className="py-16 sm:py-24 border-b border-[#e5e7db] bg-gradient-to-br from-[#FAFBF8] via-[#f4f7ee] to-[#FAFBF8]">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
-            
+
             <div className="lg:col-span-7">
               <span className="rounded-full bg-[#DFECC6]/60 border border-[#8E9C78]/30 px-3.5 py-1 text-xs font-bold uppercase tracking-wider text-[#38480e] inline-flex items-center gap-1.5">
                 <Sparkles className="size-3.5 text-[#38480e]" />

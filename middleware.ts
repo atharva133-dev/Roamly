@@ -10,15 +10,20 @@ const isPublicRoute = createRouteMatcher([
   "/guide-register(.*)",
   "/llm(.*)",
   "/mapcalendar(.*)",
+  "/trip-map(.*)",
   "/api/public(.*)",
   "/api/locations(.*)",
   "/api/location(.*)",
   "/api/guides(.*)",
   "/api/guide-requests(.*)",
   "/api/places(.*)",
-  "/api/setup(.*)",
+  "/api/routes(.*)",
   "/api/webhooks(.*)",
-  "/auth-redirect(.*)"
+  "/auth-redirect(.*)",
+  "/verify-guide(.*)",
+  "/choose-role(.*)",
+  "/login(.*)",
+  "/api/auth/me(.*)"
 ]);
 
 export default clerkMiddleware(async (auth, req) => {

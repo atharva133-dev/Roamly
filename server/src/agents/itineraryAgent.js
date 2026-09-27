@@ -13,7 +13,12 @@
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const MODEL_FALLBACK_CHAIN = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash", "gemini-2.5-pro"];
+const MODEL_FALLBACK_CHAIN = [
+  "gemini-2.5-flash-lite",
+  "gemini-3.1-flash-lite-preview",
+  "gemini-2.5-flash",
+  "gemini-3.8-flash"
+];
 
 function resolveModelChain() {
   const override = process.env.GEMINI_MODEL;
@@ -111,6 +116,7 @@ function buildDeterministicPlan(context) {
         name: pick.name,
         startTime: slot.startTime,
         endTime: slot.endTime,
+        description: `Explore the sights, architecture, and historic atmosphere of ${pick.name}.`,
         estimatedCost:
           activities.length + 1 <= 3
             ? Math.round((perDayCategoryBudget.ACTIVITIES || 0) / 3)
@@ -150,10 +156,14 @@ function buildDeterministicPlan(context) {
       date: dateStr,
       locationId: location.id,
       city: location.address?.city || location.name,
+      theme: `${location.name} Cultural Highlights & Exploration`,
+      description: `Discover premier landmarks, vibrant local markets, and cultural heritage across ${location.name}.`,
       activities,
       transit,
       guide,
       weather,
+      meals: `Sample authentic regional culinary delights and traditional street specialties in ${location.name}.`,
+      accommodation: `${tripRequest.accommodationPreference || "Hotel"} stay conveniently situated near central ${location.name}.`,
       accommodationCost,
       foodCost,
       transportCost,
@@ -168,6 +178,7 @@ function buildDeterministicPlan(context) {
   const totalEstimatedCost = Math.round(days.reduce((sum, d) => sum + d.dayEstimatedCost, 0) * 100) / 100;
 
   return {
+    summary: `Curated ${durationDays}-day journey across ${resolvedLocations.map((l) => l.name).join(", ")} featuring top cultural attractions, comfortable accommodations, and authentic local experiences.`,
     destinations: resolvedLocations.map((l) => ({ locationId: l.id, name: l.name, city: l.address?.city || l.name })),
     days,
     totalEstimatedCost
@@ -188,12 +199,29 @@ function buildGeminiPrompt(context) {
     budgetAllocations
   };
 
-  return `You are a travel itinerary synthesis engine for Roamly.
+  return `You are a premier travel itinerary synthesis engine for Roamly.
 
-You may only use facts contained in the supplied grounded data below. Never invent places, place IDs, coordinates, prices, opening hours, guide details, route durations, weather, or availability. Do not alter the user's totalBudget. If required information is missing, represent it as UNAVAILABLE. Only select attractions from candidatePlaces (by their exact placeId). Only use route information from transitRoutes. Only use guides from matchedGuides (by their exact guide id). Only use budget values from budgetAllocations.
+Create a vivid, well-structured, and engaging itinerary narrative while strictly adhering to the grounded facts provided below.
+
+GROUNDING RULES (STRICT):
+1. Only select attractions from candidatePlaces (by their exact placeId and name). Never invent places, place IDs, or coordinates.
+2. Only use route information from transitRoutes. Never invent travel durations or distances.
+3. Only use guides from matchedGuides (by their exact guide id).
+4. Strictly respect the budget allocations and numbers from budgetAllocations. The sum of (accommodationCost + foodCost + transportCost + activitiesCost + guideCost) MUST equal dayEstimatedCost. The sum of all dayEstimatedCost MUST equal totalEstimatedCost.
+5. Do not alter the user's totalBudget. If required information is missing, represent it as UNAVAILABLE.
+
+NARRATIVE & DESCRIPTIONS (REQUIRED):
+1. "summary": Provide a captivating, personalized 1-2 sentence overview of the entire journey.
+2. For each day, provide:
+   - "theme": An evocative title/theme for the day (e.g. "Mughal Grandeur & Old Bazaars", "Spiritual Sanctuaries & Sunset Views").
+   - "description": A rich, brief 1-2 sentence overview of what the traveler experiences and feels on this day.
+   - For every activity in "activities": an engaging "description" (1-2 sentences highlighting key sights within the attraction, historical/architectural context, and tips on what not to miss).
+   - "meals": Rich regional dining suggestions for the day (e.g. famous breakfast spots, signature regional dishes to try for lunch, and dinner recommendations).
+   - "accommodation": Recommended area or style of stay suited to the traveler's preference and budget (e.g. "Heritage boutique stay near Connaught Place / South Delhi with easy transit access").
 
 Respond with ONLY valid JSON matching exactly this shape, no markdown, no backticks:
 {
+  "summary": "...",
   "destinations": [{ "locationId": "...", "name": "...", "city": "..." }],
   "days": [
     {
@@ -201,10 +229,24 @@ Respond with ONLY valid JSON matching exactly this shape, no markdown, no backti
       "date": "YYYY-MM-DD",
       "locationId": "...",
       "city": "...",
-      "activities": [{ "slot": "morning|afternoon|evening", "placeId": "...", "name": "...", "startTime": "HH:MM", "endTime": "HH:MM", "estimatedCost": 0 }],
+      "theme": "...",
+      "description": "...",
+      "activities": [
+        {
+          "slot": "morning|afternoon|evening",
+          "placeId": "...",
+          "name": "...",
+          "startTime": "HH:MM",
+          "endTime": "HH:MM",
+          "description": "...",
+          "estimatedCost": 0
+        }
+      ],
       "transit": { "fromLocationId": "...", "toLocationId": "...", "distanceMeters": 0, "durationSeconds": 0, "requestedMode": "...", "actualModes": [], "preferenceSatisfied": true } or null,
       "guide": { "guideId": "...", "name": "...", "isDemo": false, "isBookable": true, "hourlyRate": 0, "cost": 0 } or null,
       "weather": { "available": true, "description": "...", "temperatureMaxC": 0, "temperatureMinC": 0, "precipitationProbabilityMax": 0 } or { "available": false, "reason": "FORECAST_UNAVAILABLE" },
+      "meals": "...",
+      "accommodation": "...",
       "accommodationCost": 0,
       "foodCost": 0,
       "transportCost": 0,
@@ -277,15 +319,35 @@ async function attemptGeminiSynthesis(context) {
   return null;
 }
 
+function hydrateActivityCoordinates(plan, candidatePlaces) {
+  if (!plan || !Array.isArray(plan.days)) return plan;
+  for (const day of plan.days) {
+    const candidates = candidatePlaces?.[day.locationId] || [];
+    for (const act of day.activities || []) {
+      const match = candidates.find((c) => c.placeId === act.placeId);
+      if (match) {
+        if (act.latitude === undefined && match.latitude != null) act.latitude = match.latitude;
+        if (act.longitude === undefined && match.longitude != null) act.longitude = match.longitude;
+        if (!act.address && match.formattedAddress) act.address = match.formattedAddress;
+        if (act.rating === undefined && match.rating != null) act.rating = match.rating;
+        if (act.userRatingCount === undefined && match.userRatingCount != null) act.userRatingCount = match.userRatingCount;
+        if (!act.primaryType && match.primaryType) act.primaryType = match.primaryType;
+      }
+    }
+  }
+  return plan;
+}
+
 export async function execute(context, options = {}) {
   const geminiResult = options.forceDeterministic
     ? null
     : await attemptGeminiSynthesis(context).catch(() => null);
 
   if (geminiResult) {
+    const hydrated = hydrateActivityCoordinates(geminiResult.plan, context.candidatePlaces);
     return {
       success: true,
-      data: { generatedPlan: geminiResult.plan },
+      data: { generatedPlan: hydrated },
       source: "GEMINI_SYNTHESIS",
       fallbackUsed: false,
       meta: { modelUsed: geminiResult.modelUsed }
@@ -293,9 +355,10 @@ export async function execute(context, options = {}) {
   }
 
   const deterministicPlan = buildDeterministicPlan(context);
+  const hydrated = hydrateActivityCoordinates(deterministicPlan, context.candidatePlaces);
   return {
     success: true,
-    data: { generatedPlan: deterministicPlan },
+    data: { generatedPlan: hydrated },
     source: "ROAMLY_DETERMINISTIC_SCHEDULER",
     fallbackUsed: true
   };

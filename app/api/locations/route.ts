@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { enforceRole } from "@/lib/auth/rbac";
 import { UserRole } from "@prisma/client";
+import { findOrCreateLocation } from "@/server/src/services/googleMapsGateway.js";
 
 // Initial seed locations if database is empty or offline
 const INITIAL_LOCATIONS = [
@@ -66,6 +67,27 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const city = searchParams.get("city");
+    const query = searchParams.get("query") || searchParams.get("q");
+
+    if (query && query.trim()) {
+      try {
+        const cleanQuery = query.trim();
+        const loc: any = await findOrCreateLocation({ name: cleanQuery, formattedAddress: cleanQuery });
+        if (loc) {
+          const lat = loc.coordinates?.lat ?? loc.latitude;
+          const lng = loc.coordinates?.lng ?? loc.longitude;
+          return NextResponse.json({
+            locations: [loc],
+            location: loc,
+            latitude: lat,
+            longitude: lng,
+            formattedAddress: loc.address?.formatted || loc.formattedAddress || cleanQuery,
+          });
+        }
+      } catch (err: any) {
+        console.warn("[GET /api/locations] query geocoding failed:", err.message);
+      }
+    }
 
     let count = 0;
     try {

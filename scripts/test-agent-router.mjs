@@ -162,18 +162,18 @@ await test("Guides: NO_GUIDE preference short-circuits with no matching required
   assert(Object.keys(result.data.matchedGuides).length === 0, "NO_GUIDE should produce an empty matchedGuides map");
 });
 
-await test("Guides: NEED_GUIDE with no reachable DB falls back to explicitly-marked demo guides", async () => {
+await test("Guides: NEED_GUIDE returns only real DB guides — no demo fallback", async () => {
   const locationResult = await locationAgent.execute({ tripRequest: baseTripRequest({ destinations: ["Mumbai"] }) });
   const context = { tripRequest: baseTripRequest({ destinations: ["Mumbai"], guidePreference: "NEED_GUIDE" }), ...locationResult.data };
   const result = await guideAgent.execute(context);
   assert(result.success, "expected success");
+  assert(result.fallbackUsed === false, "demo fallback must never be used");
+  assert(result.source === "ROAMLY_DATABASE" || result.source === "N/A", "source must be ROAMLY_DATABASE or N/A");
   const guides = result.data.matchedGuides[context.resolvedLocations[0].id] || [];
-  if (guides.length === 0) return "SKIP"; // a real DB with Mumbai guides is configured; nothing to fall back to
   for (const g of guides) {
-    assert(g.guideSource === "ROAMLY_DEMO_FALLBACK" || g.guideSource === "ROAMLY_DATABASE", "guide must carry a guideSource");
-    if (g.guideSource === "ROAMLY_DEMO_FALLBACK") {
-      assert(g.isDemo === true && g.isBookable === false, "demo guides must be marked isDemo/not bookable");
-    }
+    assert(g.guideSource === "ROAMLY_DATABASE", "every guide must come from ROAMLY_DATABASE");
+    assert(g.isDemo === false, "isDemo must be false for all guides");
+    assert(g.isBookable === true, "isBookable must be true for real DB guides");
   }
 });
 

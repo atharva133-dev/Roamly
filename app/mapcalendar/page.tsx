@@ -22,6 +22,8 @@ import {
   ArrowRight,
   ChevronRight,
   Download,
+  User,
+  Compass,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -67,6 +69,7 @@ interface TravelPlan {
 interface AcceptedTripData {
   plan: TravelPlan;
   summary: string;
+  tripId?: string | null;
   destinations: string[];
   startDate: string;
   endDate: string;
@@ -75,8 +78,19 @@ interface AcceptedTripData {
   budgetCategory?: string;
   accommodation: string;
   transportation: string;
+  travelerCount?: number;
   interests: string[];
   acceptedAt?: string;
+  guidePreference?: string;
+  selectedGuide?: {
+    id: string;
+    guideId?: string;
+    name: string;
+    hourlyRate: number;
+    profilePhoto?: string | null;
+    matchedAreas?: string[];
+    coverageLabel?: string | null;
+  } | null;
 }
 
 // Fallback sample trip data if none accepted yet
@@ -183,6 +197,51 @@ export default function MySchedulePage() {
   const [hasCustomAcceptedPlan, setHasCustomAcceptedPlan] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<"itinerary" | "tips" | "packing" | "emergency">("itinerary");
   const [mounted, setMounted] = useState<boolean>(false);
+  const [requestingGuide, setRequestingGuide] = useState<boolean>(false);
+  const [guideRequestStatus, setGuideRequestStatus] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
+
+  const handleRequestSelectedGuide = async () => {
+    if (!tripData.selectedGuide) return;
+    setRequestingGuide(true);
+    setGuideRequestStatus(null);
+    try {
+      const res = await fetch("/api/guide-requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          guideId: tripData.selectedGuide.guideId || tripData.selectedGuide.id,
+          tourId: tripData.tripId || undefined,
+          city: tripData.destinations?.[0] || "Trip Destination",
+          startDate: tripData.startDate,
+          endDate: tripData.endDate,
+          groupSize: tripData.travelerCount || 1,
+          message: `Trip booking request for ${tripData.destinations?.join(", ") || "destination"}`,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setGuideRequestStatus({
+          type: "success",
+          message: `Booking request sent to ${tripData.selectedGuide.name}! Status: PENDING confirmation.`,
+        });
+      } else {
+        setGuideRequestStatus({
+          type: "error",
+          message: data.error?.message || "Failed to send guide request. Guide may no longer be available.",
+        });
+      }
+    } catch (err: any) {
+      setGuideRequestStatus({
+        type: "error",
+        message: err.message || "Failed to send guide request",
+      });
+    } finally {
+      setRequestingGuide(false);
+    }
+  };
 
   useEffect(() => {
     setMounted(true);
@@ -257,12 +316,19 @@ export default function MySchedulePage() {
 
           {/* Action CTAs */}
           <div className="flex flex-wrap items-center gap-3">
+            <Link href="/trip-map">
+              <Button className="bg-[#485C11] hover:bg-[#3a4d0d] text-white rounded-full px-5 shadow-sm text-sm">
+                <MapPin className="mr-2 size-4 text-[#DFECC6]" />
+                Interactive Trip Map
+              </Button>
+            </Link>
             <Button
               onClick={() => exportItineraryToPDF(tripData)}
-              className="bg-[#485C11] hover:bg-[#3a4d0d] text-white rounded-full px-5 shadow-sm text-sm"
+              variant="outline"
+              className="border-[#8E9C78]/40 hover:bg-[#DFECC6]/30 text-[#1a1a1a] rounded-full px-5 shadow-sm text-sm"
             >
               <Download className="mr-2 size-4" />
-              Download Itinerary PDF
+              Download PDF
             </Button>
             <Link href="/llm">
               <Button variant="outline" className="border-[#8E9C78]/40 hover:bg-[#DFECC6]/30 text-[#1a1a1a] rounded-full px-5 shadow-sm text-sm">
@@ -385,6 +451,68 @@ export default function MySchedulePage() {
                           {interest}
                         </Badge>
                       ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Selected Tour Guide */}
+                {tripData.selectedGuide && (
+                  <div className="pt-3 border-t border-[#e5e7db]/70">
+                    <span className="text-[11px] font-semibold text-[#485C11] uppercase tracking-wider block mb-2">
+                      Selected Tour Guide
+                    </span>
+                    <div className="p-3 rounded-xl bg-[#FAFBF8] border border-[#DFECC6] shadow-2xs">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-9 h-9 rounded-full bg-[#DFECC6] text-[#485C11] border border-[#8E9C78]/40 flex items-center justify-center font-bold text-xs shrink-0 overflow-hidden">
+                            {tripData.selectedGuide.profilePhoto ? (
+                              <img
+                                src={tripData.selectedGuide.profilePhoto}
+                                alt={tripData.selectedGuide.name}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <span>{tripData.selectedGuide.name.charAt(0)}</span>
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <span className="font-bold text-gray-900 block truncate text-xs">
+                              {tripData.selectedGuide.name}
+                            </span>
+                            <span className="text-[11px] text-[#485C11] font-semibold block">
+                              ₹{tripData.selectedGuide.hourlyRate}/hour
+                            </span>
+                          </div>
+                        </div>
+
+                        <Button
+                          size="sm"
+                          disabled={requestingGuide}
+                          onClick={handleRequestSelectedGuide}
+                          className="bg-[#485C11] hover:bg-[#38480e] text-white text-[11px] h-7 px-2.5 rounded-lg shrink-0"
+                        >
+                          {requestingGuide ? "Requesting…" : "Request Guide"}
+                        </Button>
+                      </div>
+
+                      <p className="text-[11px] text-gray-500 mt-2">
+                        {tripData.selectedGuide.coverageLabel ||
+                          (tripData.selectedGuide.matchedAreas?.length
+                            ? `Covers ${tripData.selectedGuide.matchedAreas.join(" + ")}`
+                            : "Verified Local Guide")}
+                      </p>
+
+                      {guideRequestStatus && (
+                        <div
+                          className={`mt-2 p-2 rounded text-[11px] font-medium ${
+                            guideRequestStatus.type === "success"
+                              ? "bg-green-50 text-green-800 border border-green-200"
+                              : "bg-red-50 text-red-800 border border-red-200"
+                          }`}
+                        >
+                          {guideRequestStatus.message}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

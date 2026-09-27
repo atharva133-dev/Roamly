@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
-import { auth } from '@clerk/nextjs/server'
+import { enforceRole } from '@/lib/auth/rbac'
+import { UserRole } from '@prisma/client'
 
 // Mock data - replace with actual database queries
 let mockUsers = [
@@ -54,18 +55,8 @@ function getDashboardStats() {
 
 export async function GET() {
   try {
-    // Check if user is authenticated and has admin privileges
-    const { userId } = await auth()
-    
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // TODO: Add admin role check here
-    // const user = await getUserById(userId)
-    // if (!user.isAdmin) {
-    //   return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    // }
+    const { errorResponse } = await enforceRole([UserRole.SUPER_ADMIN]);
+    if (errorResponse) return errorResponse;
 
     return NextResponse.json({
       users: mockUsers,
@@ -82,11 +73,8 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const { userId } = await auth()
-    
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const { errorResponse } = await enforceRole([UserRole.SUPER_ADMIN]);
+    if (errorResponse) return errorResponse;
 
     const body = await request.json()
     const { action, data } = body
@@ -95,17 +83,17 @@ export async function POST(request: Request) {
       case 'updateUser':
         // TODO: Implement user update logic
         return NextResponse.json({ success: true, message: 'User updated successfully' })
-      
+
       case 'deleteUser':
         // Remove user from mock data
         const userToDelete = data.userId
         mockUsers = mockUsers.filter(user => user.id !== userToDelete)
-        return NextResponse.json({ 
-          success: true, 
+        return NextResponse.json({
+          success: true,
           message: 'User deleted successfully',
           stats: getDashboardStats() // Return updated stats
         })
-      
+
       default:
         return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
     }

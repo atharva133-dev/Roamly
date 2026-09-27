@@ -113,61 +113,37 @@ export async function POST(req: Request) {
 
     let text = "";
 
-    // Route gpt-6-astra through Experiential Gateway if configured, otherwise fall back to Gemini
-    const apiKey = process.env.EXPLABS_API_KEY;
+    const preferredModel = process.env.GEMINI_MODEL;
+    const candidateModels = preferredModel
+      ? [preferredModel, "gemini-2.5-flash-lite", "gemini-3.1-flash-lite-preview", "gemini-2.5-flash", "gemini-3.8-flash"]
+      : ["gemini-2.5-flash-lite", "gemini-3.1-flash-lite-preview", "gemini-2.5-flash", "gemini-3.8-flash"];
 
-    if (apiKey) {
+    let result: any = null;
+    let lastError: unknown = null;
+
+    for (const modelName of candidateModels) {
       try {
-        console.log("🤖 Generating itinerary with Experiential Gateway model: gpt-6-astra");
-        const { createChatCompletion } = await import("@/lib/experiential");
-        const completion = await createChatCompletion([
-          { role: "user", content: prompt }
-        ]);
-
-        text = completion.choices?.[0]?.message?.content?.trim() || "";
-        console.log("✅ Itinerary generation succeeded with Experiential gpt-6-astra");
-      } catch (expError: any) {
-        console.warn(`⚠️ Experiential gpt-6-astra encountered issue: ${expError.message}. Falling back to Gemini...`);
-      }
-    } else {
-      console.log("ℹ️ EXPLABS_API_KEY not set. Using Gemini directly.");
-    }
-
-    if (!text) {
-      const preferredModel = process.env.GEMINI_MODEL;
-      const candidateModels = preferredModel
-        ? [preferredModel, "gemini-3.5-flash", "gemini-3.7-flash", "gemini-2.5-pro"]
-        : ["gemini-3.5-flash", "gemini-3.7-flash", "gemini-2.5-pro"];
-
-      let result: any = null;
-      let lastError: unknown = null;
-
-      for (const modelName of candidateModels) {
-        try {
-          console.log(`🤖 Generating itinerary with Gemini model: ${modelName}`);
-          const model = genAI.getGenerativeModel({ model: modelName });
-          result = await model.generateContent({
-            contents: [{ role: "user", parts: [{ text: prompt }] }],
-          });
-          if (result) {
-            console.log(`✅ Itinerary generation succeeded with model: ${modelName}`);
-            break;
-          }
-        } catch (err: unknown) {
-          const errorMsg = err instanceof Error ? err.message : String(err);
-          console.warn(`⚠️ Model ${modelName} encountered an issue (${errorMsg}). Trying next model...`);
-          lastError = err;
+        console.log(`🤖 Generating itinerary with Gemini model: ${modelName}`);
+        const model = genAI.getGenerativeModel({ model: modelName });
+        result = await model.generateContent({
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+        });
+        if (result) {
+          console.log(`✅ Itinerary generation succeeded with model: ${modelName}`);
+          break;
         }
-      }
-
-      if (!result && !text) {
-        throw lastError || new Error("LLM generation failed");
-      }
-
-      if (!text && result) {
-        text = result?.response?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        console.warn(`⚠️ Model ${modelName} encountered an issue (${errorMsg}). Trying next model...`);
+        lastError = err;
       }
     }
+
+    if (!result) {
+      throw lastError || new Error("LLM generation failed");
+    }
+
+    text = result?.response?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
 
     text = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
 

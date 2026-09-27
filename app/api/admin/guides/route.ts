@@ -54,6 +54,8 @@ export async function GET(req: Request) {
         expertise: g.expertise,
         hourlyRate: g.hourly_rate,
         verificationStatus: g.verification_status,
+        isEmailVerified: g.verification_status === "VERIFIED",
+        emailVerifiedAt: g.email_verified_at,
         availabilityStatus: g.availability_status,
         appliedAt: g.created_at,
         currentLocation: g.current_location?.name || "Not Set",

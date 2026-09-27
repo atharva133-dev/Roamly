@@ -223,10 +223,10 @@ export function AIChatbot() {
               <Bot className="w-4 h-4 text-white" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-[#1a1a1a] leading-none">AI Assistant</h2>
+              <h2 className="text-sm font-bold text-[#1a1a1a] leading-none">Roamly AI Assistant</h2>
               <p className="text-[11px] text-[#6b7280] mt-0.5 flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
-                Powered by Gemini
+                Powered by <strong className="text-[#485C11]">Gemini</strong>
               </p>
             </div>
           </div>
@@ -247,11 +247,10 @@ export function AIChatbot() {
           </div>
         </div>
 
-        {/* Disclaimer */}
-        <div className="px-4 py-2 bg-[#f0f4e8] border-b border-[#e5e7db]">
-          <p className="text-[10.5px] text-[#6b7280]">
-            This assistant is powered by AI. Responses may not always be accurate.
-          </p>
+        {/* Gemini Travel Intelligence Indicator */}
+        <div className="px-4 py-1.5 bg-[#f0f4e8] border-b border-[#e5e7db] flex items-center justify-between text-[10px] text-[#485C11] font-medium">
+          <span>AI Travel & Itinerary Assistant</span>
+          <span className="bg-[#485C11]/10 px-2 py-0.5 rounded-full font-semibold">Gemini AI</span>
         </div>
 
         {/* Messages */}

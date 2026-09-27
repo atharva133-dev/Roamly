@@ -23,7 +23,7 @@ export async function GET(req: Request) {
     // Try to find the DB user by email
     let dbUser = await prisma.user.findUnique({
       where: { email },
-      select: { role: true, profile_completed: true },
+      select: { role: true, clerk_id: true, profile_completed: true },
     });
 
     // Optionally: create a new user if not found
@@ -36,19 +36,50 @@ export async function GET(req: Request) {
           role: "USER",
           profile_photo_url: clerkUser?.imageUrl || null,
         },
-        select: { role: true, profile_completed: true },
+        select: { role: true, clerk_id: true, profile_completed: true },
+      });
+    } else if (!dbUser.clerk_id) {
+      await prisma.user.update({
+        where: { email },
+        data: { clerk_id: userId },
       });
     }
 
+    // Inspect user intent from query param or auth cookie
+    const reqUrl = new URL(req.url);
+    const queryIntent = reqUrl.searchParams.get("intent");
+    const cookieHeader = req.headers.get("cookie") || "";
+    const cookieMatch = cookieHeader.match(/roamly_auth_intent=([^;]+)/);
+    const cookieIntent = cookieMatch ? decodeURIComponent(cookieMatch[1].trim()) : null;
+    const intent = queryIntent || cookieIntent;
+
+    let targetUrl: URL;
+
+    // Database role is authoritative (selected intent never overrides DB authorization)
     if (dbUser.role === "SUPER_ADMIN") {
-      return NextResponse.redirect(new URL("/admin-guides", req.url));
-    } else if (dbUser.role === "GUIDE" && dbUser.profile_completed) {
-      return NextResponse.redirect(new URL("/guides", req.url));
+      targetUrl = new URL("/admin-guides", req.url);
+    } else if (dbUser.role === "GUIDE") {
+      // Existing GUIDE always proceeds to guide dashboard
+      targetUrl = new URL("/guide-dashboard", req.url);
     } else {
-      return NextResponse.redirect(new URL("/landing_page", req.url));
+      // Role is USER in database
+      if (intent === "guide") {
+        // User chose "Continue as Guide", but account is registered as a Traveler
+        // Show clear message and offer "Register as a Guide" without altering role
+        targetUrl = new URL("/choose-role?notice=traveler_account", req.url);
+      } else {
+        // Standard traveler login flow
+        targetUrl = new URL("/landing_page", req.url);
+      }
     }
+
+    const response = NextResponse.redirect(targetUrl);
+    // Clear transient auth intent cookie if set
+    response.cookies.delete("roamly_auth_intent");
+    return response;
   } catch (err) {
     console.error("auth-redirect error:", err);
-    return NextResponse.redirect(new URL("/", req.url));
+    // Redirect to landing_page instead of '/' to prevent sign-in loop if DB is offline
+    return NextResponse.redirect(new URL("/landing_page", req.url));
   }
 }

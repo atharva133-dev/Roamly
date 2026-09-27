@@ -11,7 +11,7 @@
  * - Never log secrets or API keys.
  */
 
-import { autocompletePlaces, textSearchPlaces, getPlaceDetails } from "../integrations/google/places.js";
+import { autocompletePlaces, textSearchPlaces, getPlaceDetails, nearbySearchPlaces } from "../integrations/google/places.js";
 import { geocodeAddress, reverseGeocode, geocodePlaceId } from "../integrations/google/geocoding.js";
 import { getCurrentDeviceLocation } from "../integrations/google/geolocation.js";
 import { computeRoute } from "../integrations/google/routes.js";
@@ -482,4 +482,147 @@ export async function recordTripStop({ tripId, locationId, sequence, arrivalDate
       departureDate
     };
   }
+}
+
+// Nearby search cache
+const nearbyCache = new Map();
+const NEARBY_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+
+/**
+ * Search for nearby places around a given location.
+ * Cached for 15 minutes per (lat,lng,types) key.
+ *
+ * @param {Object} params
+ * @param {number} params.latitude
+ * @param {number} params.longitude
+ * @param {number} [params.radiusMeters=1500]
+ * @param {Array<string>} [params.includedTypes]
+ * @param {Array<string>} [params.excludedPlaceIds]
+ * @param {number} [params.maxResultCount=10]
+ * @returns {Promise<Array<Object>>}
+ */
+export async function searchNearbyPlaces(params = {}) {
+  const { latitude, longitude, radiusMeters = 1500, includedTypes, excludedPlaceIds, maxResultCount = 10 } = params;
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return [];
+
+  const cacheKey = `nearby:${latitude.toFixed(3)},${longitude.toFixed(3)}:${(includedTypes || []).sort().join(",")}:${radiusMeters}`;
+  const cached = nearbyCache.get(cacheKey);
+  if (cached && Array.isArray(cached.results) && cached.results.length > 0 && Date.now() - cached.cachedAt < NEARBY_CACHE_TTL_MS) {
+    // Apply exclusion filter on cached results
+    const excludeSet = new Set(excludedPlaceIds || []);
+    return cached.results.filter(p => !excludeSet.has(p.placeId));
+  }
+
+  const results = await nearbySearchPlaces({
+    latitude,
+    longitude,
+    radiusMeters,
+    includedTypes,
+    excludedPlaceIds,
+    maxResultCount
+  });
+
+  if (Array.isArray(results) && results.length > 0) {
+    nearbyCache.set(cacheKey, { results, cachedAt: Date.now() });
+  }
+  return results;
+}
+
+/**
+ * Search for hotels/lodging near a location.
+ * Uses the nearbySearchPlaces with lodging type.
+ *
+ * @param {Object} params
+ * @param {number} params.latitude
+ * @param {number} params.longitude
+ * @param {number} [params.radiusMeters=5000]
+ * @param {number} [params.maxResultCount=10]
+ * @returns {Promise<Array<Object>>}
+ */
+export async function searchHotels(params = {}) {
+  const { latitude, longitude, radiusMeters = 5000, maxResultCount = 10 } = params;
+  return searchNearbyPlaces({
+    latitude,
+    longitude,
+    radiusMeters,
+    includedTypes: ["lodging"],
+    maxResultCount
+  });
+}
+
+/**
+ * Compute a multi-stop route with optional waypoint optimization.
+ * Aggregates individual legs when multi-waypoint is not supported.
+ *
+ * @param {Object} params
+ * @param {{lat: number, lng: number}} params.origin
+ * @param {Array<{lat: number, lng: number}>} params.waypoints
+ * @param {{lat: number, lng: number}} params.destination
+ * @param {string} [params.mode="CAB"]
+ * @param {boolean} [params.optimizeOrder=false]
+ * @returns {Promise<Object>}
+ */
+export async function computeMultiStopRoute({ origin, waypoints = [], destination, mode = "CAB", optimizeOrder = false }) {
+  if (!origin || !destination) {
+    return { available: false, reason: "ROUTE_UNAVAILABLE", detail: "Missing origin/destination" };
+  }
+
+  // Build the ordered list of stops: origin -> wp1 -> wp2 -> ... -> destination
+  const stops = [origin, ...waypoints, destination];
+  const legs = [];
+  let totalDistanceMeters = 0;
+  let totalDurationSeconds = 0;
+  let routeSource = "GOOGLE_ROUTES";
+
+  // Compute individual legs
+  for (let i = 0; i < stops.length - 1; i++) {
+    const leg = await getRouteBetween({ origin: stops[i], destination: stops[i + 1], mode });
+    legs.push({
+      from: stops[i],
+      to: stops[i + 1],
+      ...leg
+    });
+    if (leg.available) {
+      totalDistanceMeters += leg.distanceMeters || 0;
+      totalDurationSeconds += leg.durationSeconds || 0;
+      if (leg.routeSource === "ROAMLY_ESTIMATE") routeSource = "ROAMLY_ESTIMATE";
+    }
+  }
+
+  // Simple waypoint optimization: try all permutations for small sets (≤ 5)
+  let optimizedOrder = null;
+  if (optimizeOrder && waypoints.length >= 2 && waypoints.length <= 5) {
+    // Nearest-neighbor heuristic
+    const remaining = [...waypoints.map((wp, i) => ({ wp, idx: i }))];
+    const ordered = [];
+    let current = origin;
+
+    while (remaining.length > 0) {
+      let bestIdx = 0;
+      let bestDist = Infinity;
+      for (let i = 0; i < remaining.length; i++) {
+        const d = Math.sqrt(
+          Math.pow(remaining[i].wp.lat - current.lat, 2) +
+          Math.pow(remaining[i].wp.lng - current.lng, 2)
+        );
+        if (d < bestDist) {
+          bestDist = d;
+          bestIdx = i;
+        }
+      }
+      ordered.push(remaining[bestIdx].idx);
+      current = remaining[bestIdx].wp;
+      remaining.splice(bestIdx, 1);
+    }
+    optimizedOrder = ordered;
+  }
+
+  return {
+    available: legs.some(l => l.available),
+    totalDistanceMeters,
+    totalDurationSeconds,
+    legs,
+    optimizedOrder,
+    routeSource
+  };
 }

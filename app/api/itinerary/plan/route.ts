@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import prisma from "@/lib/prisma";
+import { UserRole, VerificationStatus, AvailabilityStatus } from "@prisma/client";
 import { getAuthenticatedUser } from "@/lib/auth/rbac";
 import { planItinerary } from "@/server/src/agents/agentRouter.js";
 
@@ -69,15 +71,25 @@ function validateRequest(body: Partial<ItineraryPlanRequestBody>): string[] {
  */
 export async function POST(req: Request) {
   // Use the resolved Prisma User.user_id (via getAuthenticatedUser), NOT the
-  // raw Clerk session id. Trip.user_id is a foreign key into `users`, and
-  // clerk_id / user_id are NOT guaranteed to be the same value (they only
-  // coincide when the Clerk webhook creates the row first; if this app's own
-  // auto-create-on-first-request path in lib/auth/rbac.ts runs first instead,
-  // user_id is an independently generated cuid). Using the raw Clerk id here
-  // would make prisma.trip.create() fail on a foreign key violation.
+  // raw Clerk session id.
   const authContext = await getAuthenticatedUser();
   if (!authContext) {
     return NextResponse.json({ success: false, error: { code: "UNAUTHENTICATED", message: "Sign in required" } }, { status: 401 });
+  }
+
+  // RBAC: Guides cannot generate or plan traveler trips (TEST 14/15)
+  if (authContext.role === UserRole.GUIDE) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: {
+          code: "FORBIDDEN",
+          message: "Forbidden: Guides cannot plan traveler trips.",
+          currentRole: authContext.role,
+        },
+      },
+      { status: 403 }
+    );
   }
 
   let body: Partial<ItineraryPlanRequestBody>;
@@ -93,6 +105,50 @@ export async function POST(req: Request) {
       { success: false, error: { code: "INVALID_REQUEST", message: "Request validation failed", details: validationErrors } },
       { status: 400 }
     );
+  }
+
+  // Validate selected guide if specified
+  if (body.selectedGuideId) {
+    const selectedGuide = await prisma.guideProfile.findUnique({
+      where: { id: body.selectedGuideId },
+      include: { user: true },
+    });
+    if (!selectedGuide || selectedGuide.user?.role !== UserRole.GUIDE) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "INVALID_GUIDE_SELECTION",
+            message: "Selected guide does not exist or is inactive",
+          },
+        },
+        { status: 400 }
+      );
+    }
+    if (selectedGuide.verification_status !== VerificationStatus.VERIFIED) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "GUIDE_UNVERIFIED",
+            message: "Selected guide is not verified",
+          },
+        },
+        { status: 400 }
+      );
+    }
+    if (selectedGuide.availability_status !== AvailabilityStatus.AVAILABLE) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "GUIDE_UNAVAILABLE",
+            message: `Selected guide is currently not available (${selectedGuide.availability_status})`,
+          },
+        },
+        { status: 400 }
+      );
+    }
   }
 
   const tripRequest = {

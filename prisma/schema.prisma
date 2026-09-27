@@ -103,13 +103,19 @@ model GuideProfile {
   current_location_id  String?
   current_location     Location?          @relation("GuideCurrentLocation", fields: [current_location_id], references: [id])
   last_location_update DateTime?
-  created_at           DateTime           @default(now())
-  updated_at           DateTime           @updatedAt
+  email_verified_at             DateTime?
+  verification_token_hash       String?
+  verification_token_expires_at DateTime?
+  verification_token_used_at    DateTime?
+  created_at                    DateTime           @default(now())
+  updated_at                    DateTime           @updatedAt
 
   locations GuideLocation[]
   requests  GuideRequest[]  @relation("GuideReceivedRequests")
+  selectedInTrips Trip[]    @relation("TripSelectedGuide")
 
   @@index([verification_status, availability_status])
+  @@index([verification_token_hash])
   @@map("guide_profiles")
 }
 
@@ -228,7 +234,11 @@ model Trip {
   reviews       Review[]
   guideRequests GuideRequest[]
 
+  selected_guide_id String?
+  selected_guide    GuideProfile?  @relation("TripSelectedGuide", fields: [selected_guide_id], references: [id], onDelete: SetNull)
+
   @@index([user_id])
+  @@index([selected_guide_id])
   @@map("trips")
 }
 

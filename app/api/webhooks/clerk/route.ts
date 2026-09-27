@@ -63,7 +63,7 @@ export async function POST(req: Request) {
 
     try {
       await prisma.user.delete({
-        where: { user_id : clerk_id },
+        where: { clerk_id: clerk_id },
       });
       console.log("User deleted from database:", clerk_id);
     } catch (error) {

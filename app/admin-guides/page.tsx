@@ -29,6 +29,8 @@ interface AdminGuideItem {
   expertise: string[];
   hourlyRate: number;
   verificationStatus: "PENDING" | "VERIFIED" | "REJECTED" | "SUSPENDED";
+  isEmailVerified?: boolean;
+  emailVerifiedAt?: string | null;
   availabilityStatus: string;
   appliedAt: string;
   currentLocation: string;
@@ -106,10 +108,10 @@ export default function AdminGuideVerificationPage() {
               Super Admin Console
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-[#1a1a1a]">
-              Licensed Guide Verification Portal
+              Guide Moderation &amp; Directory Portal
             </h1>
             <p className="text-xs sm:text-sm text-[#6b7280] mt-1">
-              Review credential documents, verify local accreditation, and approve or suspend guides for public discovery.
+              Guides self-verify their accounts via email links (admin approval not required). Use this console to inspect guides, monitor availability, and moderate or suspend accounts if needed.
             </p>
           </div>
 
@@ -211,6 +213,8 @@ export default function AdminGuideVerificationPage() {
                 <div className="flex-1">
                   <div className="flex items-center gap-2.5">
                     <h3 className="text-base font-bold text-[#1a1a1a]">{guide.name}</h3>
+
+                    {/* Email Verification Status Badge */}
                     <Badge
                       variant="outline"
                       className={`text-[10px] font-semibold ${
@@ -221,7 +225,25 @@ export default function AdminGuideVerificationPage() {
                           : "bg-rose-50 text-rose-700 border-rose-300"
                       }`}
                     >
-                      {guide.verificationStatus}
+                      {guide.verificationStatus === "VERIFIED"
+                        ? "Email: Verified ✓"
+                        : guide.verificationStatus === "PENDING"
+                        ? "Email: Pending ⚠"
+                        : `Admin Status: ${guide.verificationStatus}`}
+                    </Badge>
+
+                    {/* Availability Status Badge */}
+                    <Badge
+                      variant="outline"
+                      className={`text-[10px] font-semibold ${
+                        guide.availabilityStatus === "AVAILABLE"
+                          ? "bg-blue-50 text-blue-700 border-blue-200"
+                          : guide.availabilityStatus === "BUSY"
+                          ? "bg-yellow-50 text-yellow-800 border-yellow-200"
+                          : "bg-gray-100 text-gray-600 border-gray-200"
+                      }`}
+                    >
+                      {guide.availabilityStatus}
                     </Badge>
                   </div>
 
@@ -249,7 +271,7 @@ export default function AdminGuideVerificationPage() {
                   </div>
                 </div>
 
-                {/* Verification Controls */}
+                {/* Moderation Controls */}
                 <div className="flex items-center gap-2 shrink-0 border-t md:border-t-0 pt-3 md:pt-0">
                   {guide.verificationStatus === "PENDING" && (
                     <>
@@ -259,7 +281,7 @@ export default function AdminGuideVerificationPage() {
                         onClick={() => handleVerify(guide.id, "VERIFIED")}
                         className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8 rounded-full px-4"
                       >
-                        <Check className="w-3.5 h-3.5 mr-1" /> Approve
+                        <Check className="w-3.5 h-3.5 mr-1" /> Manual Verify
                       </Button>
                       <Button
                         size="sm"
@@ -281,7 +303,7 @@ export default function AdminGuideVerificationPage() {
                       onClick={() => handleVerify(guide.id, "SUSPENDED")}
                       className="border-amber-300 text-amber-800 hover:bg-amber-50 text-xs h-8 rounded-full px-4"
                     >
-                      <AlertTriangle className="w-3.5 h-3.5 mr-1" /> Suspend
+                      <AlertTriangle className="w-3.5 h-3.5 mr-1" /> Suspend Guide
                     </Button>
                   )}
 

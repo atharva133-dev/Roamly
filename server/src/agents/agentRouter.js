@@ -146,7 +146,8 @@ export async function persistItinerary(context) {
         user_id: user.id,
         start_date: new Date(tripRequest.startDate),
         end_date: new Date(tripRequest.endDate),
-        description: `Trip to ${resolvedLocations.map((l) => l.name).join(", ")}`
+        description: generatedPlan.summary || `Trip to ${resolvedLocations.map((l) => l.name).join(", ")}`,
+        selected_guide_id: tripRequest.selectedGuideId || null
       }
     });
 
@@ -246,6 +247,7 @@ function buildSuccessResponse(context, reOptimizations, persistResult) {
   return {
     success: true,
     tripId: context.persistedTripId,
+    summary: plan.summary || null,
     tripSummary: {
       totalBudget: context.budgetAllocations.totalBudget,
       estimatedTotalCost: plan.totalEstimatedCost,
