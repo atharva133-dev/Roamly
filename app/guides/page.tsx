@@ -232,48 +232,6 @@ export default function GuideDiscoveryPage() {
             </div>
           </div>
 
-          {/* Location Filter Chips */}
-          <div className="mt-8">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-[#6b7280] mb-3 flex items-center gap-1.5">
-              <MapPin className="w-3.5 h-3.5 text-[#485C11]" />
-              Select Iconic Location (Mumbai)
-            </h2>
-
-            {loadingLocations ? (
-              <div className="flex gap-2">
-                {[1, 2, 3, 4].map(n => (
-                  <div key={n} className="h-9 w-36 bg-gray-200 animate-pulse rounded-full" />
-                ))}
-              </div>
-            ) : (
-              <div className="flex flex-wrap gap-2.5">
-                {locations.map(loc => {
-                  const isSelected = selectedLocation?.id === loc.id;
-                  return (
-                    <button
-                      key={loc.id}
-                      onClick={() => setSelectedLocation(loc)}
-                      className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-semibold transition-all duration-200 cursor-pointer ${
-                        isSelected
-                          ? "bg-[#485C11] text-white shadow-sm scale-102"
-                          : "bg-white border border-[#e5e7db] text-[#4b5563] hover:border-[#485C11]/40 hover:bg-[#f4f7ee]"
-                      }`}
-                    >
-                      <MapPin className="w-3.5 h-3.5" />
-                      <span>{loc.name}</span>
-                      <span
-                        className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                          isSelected ? "bg-white/20 text-white" : "bg-[#485C11]/10 text-[#485C11]"
-                        }`}
-                      >
-                        {loc.activeGuidesCount} available
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
         </div>
       </section>
 
