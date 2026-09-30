@@ -166,6 +166,25 @@ export async function execute(context) {
     }
   }
 
+  // 13b. No duplicate attractions across the trip when sufficient candidates exist.
+  const totalActivitiesCount = plan.days.reduce((s, d) => s + (d.activities?.length || 0), 0);
+  if (validPlaceIds.size >= totalActivitiesCount) {
+    const seenTripPlaces = new Set();
+    for (const day of plan.days) {
+      for (const activity of day.activities || []) {
+        if (activity.placeId) {
+          if (seenTripPlaces.has(activity.placeId)) {
+            errors.push({
+              code: "DUPLICATE_ATTRACTION",
+              details: `Attraction "${activity.name}" (placeId: ${activity.placeId}) appears multiple times across different days of the itinerary.`
+            });
+          }
+          seenTripPlaces.add(activity.placeId);
+        }
+      }
+    }
+  }
+
   // 14. All dates within the trip window.
   const startTime = new Date(tripRequest?.startDate).getTime();
   const endTime = new Date(tripRequest?.endDate).getTime();

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
+import Image from "next/image";
 import { SignedIn } from "@clerk/nextjs";
 import {
   X,
@@ -219,8 +220,14 @@ export function AIChatbot() {
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3.5 border-b border-[#e5e7db] bg-white/80 backdrop-blur-md">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-[#485C11] flex items-center justify-center shadow-sm">
-              <Bot className="w-4 h-4 text-white" />
+            <div className="w-8 h-8 rounded-xl bg-white border border-[#e5e7db] flex items-center justify-center shadow-sm overflow-hidden p-0.5">
+              <Image
+                src="/logo-icon.png"
+                alt="Roamly"
+                width={32}
+                height={32}
+                className="w-full h-full object-contain"
+              />
             </div>
             <div>
               <h2 className="text-sm font-bold text-[#1a1a1a] leading-none">Roamly AI Assistant</h2>

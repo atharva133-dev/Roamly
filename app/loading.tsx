@@ -1,17 +1,20 @@
 import { Plane, Sparkles, MapPin } from "lucide-react";
+import Image from "next/image";
 
 export default function Loading() {
   return (
     <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#FAFBF8] select-none">
       <div className="relative w-full max-w-xl px-6 sm:px-8 flex flex-col items-center">
         {/* Brand Header */}
-        <div className="flex items-center gap-2 mb-6">
-          <span className="flex size-7 items-center justify-center rounded-lg bg-gradient-to-br from-[#485C11] to-[#6B7F3A] shadow-sm text-white">
-            <Sparkles className="size-3.5" />
-          </span>
-          <span className="font-serif text-2xl font-bold tracking-tight text-[#1a1a1a]">
-            Roamly
-          </span>
+        <div className="flex items-center justify-center mb-6">
+          <Image
+            src="/logo.png"
+            alt="Roamly"
+            width={150}
+            height={46}
+            className="h-9 w-auto object-contain"
+            priority
+          />
         </div>
 
         {/* Horizontal Flight Track */}

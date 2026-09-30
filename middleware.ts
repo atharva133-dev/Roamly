@@ -11,6 +11,8 @@ const isPublicRoute = createRouteMatcher([
   "/llm(.*)",
   "/mapcalendar(.*)",
   "/trip-map(.*)",
+  "/stays(.*)",
+  "/api/stays(.*)",
   "/api/public(.*)",
   "/api/locations(.*)",
   "/api/location(.*)",

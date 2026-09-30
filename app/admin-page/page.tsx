@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import Image from "next/image"
 import { Search, Filter, SortAsc, HelpCircle, Users, MapPin, Activity, TrendingUp, Loader2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -151,8 +152,14 @@ export default function AdminDashboard() {
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <div>
-            <h1 className="text-3xl font-bold" style={{ color: '#000000' }}>Roamly</h1>
-            <p style={{ color: '#929292' }}>Admin Panel</p>
+            <Image
+              src="/logo.png"
+              alt="Roamly"
+              width={140}
+              height={44}
+              className="h-9 w-auto object-contain mb-1"
+            />
+            <p className="text-xs font-semibold text-[#485C11] uppercase tracking-wider">Admin Panel</p>
           </div>
         </div>
 

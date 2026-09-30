@@ -17,6 +17,7 @@ import {
   Calendar,
   Layers,
   ChevronRight,
+  ChevronLeft,
   RefreshCw,
   Info,
   Loader2,
@@ -24,6 +25,13 @@ import {
   Search,
   Utensils,
   Coffee,
+  Camera,
+  Heart,
+  X,
+  Ticket,
+  Globe,
+  ExternalLink,
+  PlusCircle,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -32,6 +40,7 @@ export interface GroundedActivityStop {
   slot: string;
   placeId: string;
   name: string;
+  description?: string;
   startTime: string;
   endTime: string;
   estimatedCost?: number;
@@ -47,6 +56,12 @@ export interface GroundedActivityStop {
   primaryType?: string | null;
   coordinatesUnavailable?: boolean;
   isResolving?: boolean;
+  image?: string | null;
+  photos?: string[];
+  websiteUrl?: string | null;
+  websiteDomain?: string | null;
+  googleMapsUri?: string | null;
+  openingHours?: string | null;
 }
 
 export interface PlaceResult {
@@ -62,6 +77,7 @@ export interface PlaceResult {
   regularOpeningHours?: any;
   priceLevel?: string | number | null;
   googleMapsUri?: string | null;
+  photos?: Array<{ name: string; widthPx?: number; heightPx?: number }> | string[];
 }
 
 export interface RouteSummaryData {
@@ -136,8 +152,265 @@ export function decodePolyline(encoded: string): Array<{ lat: number; lng: numbe
 }
 
 /**
- * Persist resolved coordinates back into the saved plan in localStorage
- * so that subsequent visits load all stops instantly pinpointed without re-resolving.
+ * Resolve Google Places photo proxy URL or valid image link
+ */
+function toPhotoProxyUrl(photoNameOrUrl?: string): string {
+  if (!photoNameOrUrl) return "";
+  if (photoNameOrUrl.startsWith("http://") || photoNameOrUrl.startsWith("https://") || photoNameOrUrl.startsWith("/")) {
+    return photoNameOrUrl;
+  }
+  return `/api/places/photo?name=${encodeURIComponent(photoNameOrUrl)}&maxHeight=600&maxWidth=900`;
+}
+
+/**
+ * Intelligent category fallback imagery based on spot name, type, and destination
+ */
+function getCategoryFallbackImage(name: string = "", primaryType?: string | null, city?: string): string {
+  const text = `${name} ${primaryType || ""} ${city || ""}`.toLowerCase();
+
+  // 1. Food, Restaurants, Cafes, Bakeries, Eateries
+  if (
+    text.includes("restaurant") ||
+    text.includes("hakkasan") ||
+    text.includes("food") ||
+    text.includes("dining") ||
+    text.includes("lunch") ||
+    text.includes("dinner") ||
+    text.includes("breakfast") ||
+    text.includes("bistro") ||
+    text.includes("eats") ||
+    text.includes("dhaba") ||
+    text.includes("biryani") ||
+    text.includes("tandoor") ||
+    text.includes("cuisine") ||
+    text.includes("soba") ||
+    text.includes("sushi") ||
+    text.includes("bar") ||
+    text.includes("pub")
+  ) {
+    return "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=800&q=80";
+  }
+
+  if (text.includes("cafe") || text.includes("coffee") || text.includes("bakery") || text.includes("brew") || text.includes("chai") || text.includes("tea")) {
+    return "https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=800&q=80";
+  }
+
+  // 2. Royalty, Carriage, Forts, Palaces, Monuments
+  if (
+    text.includes("carriage") ||
+    text.includes("royal") ||
+    text.includes("palace") ||
+    text.includes("fort") ||
+    text.includes("mahal") ||
+    text.includes("haveli") ||
+    text.includes("monument") ||
+    text.includes("heritage") ||
+    text.includes("historic") ||
+    text.includes("gateway")
+  ) {
+    return "https://images.unsplash.com/photo-1599661046289-e31897846e41?auto=format&fit=crop&w=800&q=80";
+  }
+
+  // 3. Spiritual, Temples, Churches, Mosques, Ghats
+  if (
+    text.includes("temple") ||
+    text.includes("church") ||
+    text.includes("mosque") ||
+    text.includes("cathedral") ||
+    text.includes("shrine") ||
+    text.includes("mandir") ||
+    text.includes("ghat") ||
+    text.includes("ashram") ||
+    text.includes("spiritual")
+  ) {
+    return "https://images.unsplash.com/photo-1548013146-72479768bada?auto=format&fit=crop&w=800&q=80";
+  }
+
+  // 4. Beaches, Sea, Promenade, Bandra, Marine, Coast, Islands
+  if (
+    text.includes("beach") ||
+    text.includes("marine") ||
+    text.includes("sea") ||
+    text.includes("ocean") ||
+    text.includes("promenade") ||
+    text.includes("bandstand") ||
+    text.includes("coast") ||
+    text.includes("water") ||
+    text.includes("lake") ||
+    text.includes("river") ||
+    text.includes("island") ||
+    text.includes("cove")
+  ) {
+    return "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=800&q=80";
+  }
+
+  // 5. Markets, Shopping, Bazaars, Malls
+  if (
+    text.includes("market") ||
+    text.includes("bazaar") ||
+    text.includes("shopping") ||
+    text.includes("mall") ||
+    text.includes("street") ||
+    text.includes("causeway") ||
+    text.includes("shop")
+  ) {
+    return "https://images.unsplash.com/photo-1488459716781-31db52582fe9?auto=format&fit=crop&w=800&q=80";
+  }
+
+  // 6. Museums, Art, Galleries, Theatre
+  if (text.includes("museum") || text.includes("art") || text.includes("gallery") || text.includes("exhibit") || text.includes("culture")) {
+    return "https://images.unsplash.com/photo-1565008447742-97f6f38c985c?auto=format&fit=crop&w=800&q=80";
+  }
+
+  // 7. Nature, Parks, Gardens, Hills, Treks, Wildlife
+  if (
+    text.includes("park") ||
+    text.includes("garden") ||
+    text.includes("nature") ||
+    text.includes("forest") ||
+    text.includes("hill") ||
+    text.includes("mountain") ||
+    text.includes("wildlife") ||
+    text.includes("safari") ||
+    text.includes("trek")
+  ) {
+    return "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=800&q=80";
+  }
+
+  // 8. General travel exploration default
+  return "https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?auto=format&fit=crop&w=800&q=80";
+}
+
+/**
+ * Generate a rich, contextual travel description for an activity stop.
+ */
+function generatePlaceDescription(
+  name: string,
+  primaryType?: string | null,
+  city?: string | null,
+  slot?: string | null
+): string {
+  const cleanName = (name || "").trim();
+  const cleanCity = (city || "your destination").replace(/\s*division/i, "").trim();
+  const type = (primaryType || "").toLowerCase();
+  const slotName = (slot || "").toLowerCase();
+  const nameLower = cleanName.toLowerCase();
+
+  if (
+    type.includes("fort") ||
+    type.includes("palace") ||
+    type.includes("monument") ||
+    type.includes("historical") ||
+    nameLower.includes("fort") ||
+    nameLower.includes("palace") ||
+    nameLower.includes("mahal") ||
+    nameLower.includes("haveli") ||
+    nameLower.includes("tomb") ||
+    nameLower.includes("gateway") ||
+    nameLower.includes("monument")
+  ) {
+    return `Iconic historic landmark in ${cleanCity} renowned for its magnificent architecture, rich cultural legacy, and panoramic heritage views.`;
+  }
+
+  if (
+    type.includes("museum") ||
+    type.includes("art_gallery") ||
+    nameLower.includes("museum") ||
+    nameLower.includes("gallery") ||
+    nameLower.includes("exhibit")
+  ) {
+    return `Premier cultural institution in ${cleanCity} housing distinguished exhibits, historical collections, and celebrated works of art.`;
+  }
+
+  if (
+    type.includes("temple") ||
+    type.includes("church") ||
+    type.includes("mosque") ||
+    type.includes("shrine") ||
+    type.includes("place_of_worship") ||
+    nameLower.includes("temple") ||
+    nameLower.includes("mandir") ||
+    nameLower.includes("church") ||
+    nameLower.includes("mosque") ||
+    nameLower.includes("cathedral") ||
+    nameLower.includes("ashram") ||
+    nameLower.includes("ghat")
+  ) {
+    return `Serene spiritual destination in ${cleanCity} offering ornate sacred architecture, tranquil surroundings, and deep-rooted cultural reverence.`;
+  }
+
+  if (
+    type.includes("park") ||
+    type.includes("garden") ||
+    type.includes("botanical") ||
+    nameLower.includes("garden") ||
+    nameLower.includes("park") ||
+    nameLower.includes("bagh")
+  ) {
+    return `Lush botanical retreat in ${cleanCity} perfect for peaceful strolls, picturesque photography, and unwinding amidst natural beauty.`;
+  }
+
+  if (
+    type.includes("beach") ||
+    nameLower.includes("beach") ||
+    nameLower.includes("sea") ||
+    nameLower.includes("promenade") ||
+    nameLower.includes("coast")
+  ) {
+    return `Breathtaking coastal attraction in ${cleanCity} featuring refreshing sea breezes, scenic views, and sunset panoramas.`;
+  }
+
+  if (
+    type.includes("market") ||
+    type.includes("shopping") ||
+    type.includes("bazaar") ||
+    type.includes("store") ||
+    nameLower.includes("market") ||
+    nameLower.includes("bazaar") ||
+    nameLower.includes("chowk") ||
+    nameLower.includes("causeway")
+  ) {
+    return `Vibrant shopping quarter in ${cleanCity} teeming with authentic local handicrafts, regional textiles, street food, and bustling commerce.`;
+  }
+
+  if (
+    type.includes("restaurant") ||
+    type.includes("cafe") ||
+    type.includes("food") ||
+    type.includes("bakery") ||
+    nameLower.includes("cafe") ||
+    nameLower.includes("restaurant") ||
+    nameLower.includes("bistro")
+  ) {
+    return `Cherished dining spot in ${cleanCity} serving authentic local delicacies, signature regional flavors, and refreshing refreshments.`;
+  }
+
+  if (
+    type.includes("viewpoint") ||
+    nameLower.includes("viewpoint") ||
+    nameLower.includes("point") ||
+    nameLower.includes("hill") ||
+    nameLower.includes("peak")
+  ) {
+    return `Spectacular scenic vantage point offering sweeping panoramic vistas and memorable sightseeing opportunities across ${cleanCity}.`;
+  }
+
+  if (slotName.includes("morning")) {
+    return `Captivating morning destination in ${cleanCity} showcasing celebrated sights, vibrant local atmosphere, and picturesque architecture.`;
+  }
+  if (slotName.includes("afternoon")) {
+    return `Must-visit afternoon highlight in ${cleanCity} inviting you to explore iconic attractions and experience authentic regional character.`;
+  }
+  if (slotName.includes("evening")) {
+    return `Atmospheric evening spot in ${cleanCity} ideal for taking in local life, scenic surroundings, and memorable travel experiences.`;
+  }
+
+  return `Premier attraction in ${cleanCity} offering an enriching glimpse into local heritage, vibrant sights, and memorable surroundings.`;
+}
+
+/**
+ * Persist resolved coordinates and image data back into the saved plan in localStorage
+ * so that subsequent visits load all stops instantly pinpointed with photos without re-resolving.
  */
 function syncResolvedCoordinatesToLocalStorage(
   stopId: string,
@@ -145,10 +418,13 @@ function syncResolvedCoordinatesToLocalStorage(
     latitude: number;
     longitude: number;
     placeId?: string;
+    description?: string | null;
     address?: string | null;
     rating?: number | null;
     userRatingCount?: number | null;
     primaryType?: string | null;
+    image?: string | null;
+    photos?: string[];
   }
 ) {
   if (typeof window === "undefined") return;
@@ -169,10 +445,13 @@ function syncResolvedCoordinatesToLocalStorage(
               act.latitude = data.latitude;
               act.longitude = data.longitude;
               if (data.placeId) act.placeId = data.placeId;
+              if (data.description) act.description = data.description;
               if (data.address) act.address = data.address;
               if (data.rating) act.rating = data.rating;
               if (data.userRatingCount) act.userRatingCount = data.userRatingCount;
               if (data.primaryType) act.primaryType = data.primaryType;
+              if (data.image) act.image = data.image;
+              if (data.photos) act.photos = data.photos;
               changed = true;
             }
           });
@@ -251,18 +530,23 @@ async function resolveSingleStop(stop: GroundedActivityStop): Promise<{
   latitude: number | null;
   longitude: number | null;
   placeId: string;
+  description?: string;
   address: string | null;
   rating: number | null;
   userRatingCount: number | null;
   primaryType: string | null;
+  image: string | null;
+  photos: string[];
 }> {
-  let lat: number | null = null;
-  let lng: number | null = null;
-  let address: string | null = null;
-  let rating: number | null = null;
-  let userRatingCount: number | null = null;
-  let primaryType: string | null = null;
+  let lat: number | null = stop.latitude ?? null;
+  let lng: number | null = stop.longitude ?? null;
+  let address: string | null = stop.address || null;
+  let rating: number | null = stop.rating ?? null;
+  let userRatingCount: number | null = stop.userRatingCount ?? null;
+  let primaryType: string | null = stop.primaryType || null;
   let resolvedPlaceId: string = stop.placeId || "";
+  let photos: string[] = stop.photos || [];
+  let description: string | undefined = stop.description;
 
   // Strategy 1: Place details by placeId if already available
   if (stop.placeId) {
@@ -274,11 +558,23 @@ async function resolveSingleStop(stop: GroundedActivityStop): Promise<{
         if (r && typeof r.latitude === "number" && typeof r.longitude === "number") {
           lat = r.latitude;
           lng = r.longitude;
-          address = r.address || null;
-          rating = r.rating || null;
-          userRatingCount = r.userRatingCount || null;
-          primaryType = r.primaryType || null;
-          return { id: stop.id, latitude: lat, longitude: lng, placeId: resolvedPlaceId, address, rating, userRatingCount, primaryType };
+          address = r.address || address;
+          rating = r.rating ?? rating;
+          userRatingCount = r.userRatingCount ?? userRatingCount;
+          primaryType = r.primaryType || primaryType;
+          if (r.editorialSummary && !description) {
+            description = r.editorialSummary;
+          }
+          if (Array.isArray(r.photos) && r.photos.length > 0) {
+            photos = r.photos.map((p: any) => {
+              const pName = typeof p === "string" ? p : p?.name;
+              return pName ? toPhotoProxyUrl(pName) : null;
+            }).filter(Boolean) as string[];
+          }
+          if (photos.length > 0) {
+            const image = photos[0];
+            return { id: stop.id, latitude: lat, longitude: lng, placeId: resolvedPlaceId, description: description || stop.description, address, rating, userRatingCount, primaryType, image, photos };
+          }
         }
       }
     } catch {}
@@ -287,7 +583,36 @@ async function resolveSingleStop(stop: GroundedActivityStop): Promise<{
   const queries = getSearchQueries(stop.name, stop.city);
 
   for (const query of queries) {
-    // Strategy 2: Server geocoding gateway POST /api/locations/geocode
+    // Strategy 2: Google Places Text Search (New) - returns authentic Google photos, rating, address, coordinates
+    try {
+      const placesRes = await fetch(`/api/places/search?q=${encodeURIComponent(query)}`);
+      if (placesRes.ok) {
+        const placesData = await placesRes.json();
+        const first = placesData?.places?.[0];
+        if (first && typeof first.latitude === "number" && typeof first.longitude === "number") {
+          lat = first.latitude;
+          lng = first.longitude;
+          address = first.formattedAddress || address;
+          resolvedPlaceId = first.placeId || resolvedPlaceId;
+          rating = first.rating ?? rating;
+          userRatingCount = first.userRatingCount ?? userRatingCount;
+          primaryType = first.primaryType || primaryType;
+          if (Array.isArray(first.photos) && first.photos.length > 0) {
+            photos = first.photos
+              .map((p: any) => {
+                const pName = typeof p === "string" ? p : p?.name;
+                return pName ? toPhotoProxyUrl(pName) : null;
+              })
+              .filter(Boolean) as string[];
+          }
+          if (photos.length > 0) {
+            break;
+          }
+        }
+      }
+    } catch {}
+
+    // Strategy 3: Server geocoding gateway POST /api/locations/geocode
     try {
       const res = await fetch("/api/locations/geocode", {
         method: "POST",
@@ -346,6 +671,12 @@ async function resolveSingleStop(stop: GroundedActivityStop): Promise<{
               rating = r.rating || null;
               userRatingCount = r.userRatingCount || null;
               primaryType = r.primaryType || null;
+              if (Array.isArray(r.photos) && r.photos.length > 0) {
+                photos = r.photos.map((p: any) => {
+                  const pName = typeof p === "string" ? p : p?.name;
+                  return pName ? toPhotoProxyUrl(pName) : null;
+                }).filter(Boolean) as string[];
+              }
               break;
             }
           }
@@ -377,15 +708,44 @@ async function resolveSingleStop(stop: GroundedActivityStop): Promise<{
     }
   }
 
+  // If placeId was resolved but photos not yet loaded, attempt place details lookup
+  if (resolvedPlaceId && photos.length === 0) {
+    try {
+      const detRes = await fetch(`/api/places/details?placeId=${encodeURIComponent(resolvedPlaceId)}`);
+      if (detRes.ok) {
+        const detData = await detRes.json();
+        const r = detData.result;
+        if (r) {
+          if (!address && r.address) address = r.address;
+          if (rating == null && r.rating != null) rating = r.rating;
+          if (userRatingCount == null && r.userRatingCount != null) userRatingCount = r.userRatingCount;
+          if (!primaryType && r.primaryType) primaryType = r.primaryType;
+          if (r.editorialSummary && !description) description = r.editorialSummary;
+          if (Array.isArray(r.photos) && r.photos.length > 0) {
+            photos = r.photos.map((p: any) => {
+              const pName = typeof p === "string" ? p : p?.name;
+              return pName ? toPhotoProxyUrl(pName) : null;
+            }).filter(Boolean) as string[];
+          }
+        }
+      }
+    } catch {}
+  }
+
+  const image = photos[0] || stop.image || getCategoryFallbackImage(stop.name, primaryType, stop.city);
+
   return {
     id: stop.id,
     latitude: lat,
     longitude: lng,
     placeId: resolvedPlaceId,
+    description: description || stop.description,
     address,
     rating,
     userRatingCount,
     primaryType,
+    image,
+    photos,
   };
 }
 
@@ -488,8 +848,398 @@ async function geocodeDestination(destName: string): Promise<{ lat: number; lng:
   return null;
 }
 
+interface StopDetailModalProps {
+  stop: GroundedActivityStop;
+  onClose: () => void;
+  onViewOnMap: (stop: GroundedActivityStop) => void;
+  isSaved?: boolean;
+  onToggleSave?: (id: string) => void;
+}
+
+function StopDetailModal({
+  stop,
+  onClose,
+  onViewOnMap,
+  isSaved = false,
+  onToggleSave,
+}: StopDetailModalProps) {
+  const [photoIndex, setPhotoIndex] = useState(0);
+  const [isAdded, setIsAdded] = useState(true);
+  const [liveDetails, setLiveDetails] = useState<{
+    websiteUrl?: string;
+    websiteDomain?: string;
+    photos?: string[];
+    description?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    if (!stop.placeId || stop.placeId.startsWith("custom_")) return;
+
+    fetch(`/api/places/details?placeId=${encodeURIComponent(stop.placeId)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!active || !data?.result) return;
+        const res = data.result;
+        let fetchedPhotos: string[] = [];
+        if (Array.isArray(res.photos) && res.photos.length > 0) {
+          fetchedPhotos = res.photos
+            .map((p: any) => {
+              const pName = typeof p === "string" ? p : p?.name;
+              return pName ? toPhotoProxyUrl(pName) : null;
+            })
+            .filter(Boolean) as string[];
+        }
+
+        let domainStr = "";
+        if (res.websiteUri) {
+          try {
+            const parsed = new URL(res.websiteUri);
+            domainStr = parsed.hostname.replace(/^www\./, "");
+          } catch {}
+        }
+
+        setLiveDetails({
+          websiteUrl: res.websiteUri || undefined,
+          websiteDomain: domainStr || undefined,
+          photos: fetchedPhotos.length > 0 ? fetchedPhotos : undefined,
+          description: res.editorialSummary || undefined,
+        });
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, [stop.placeId]);
+
+  const rawPhotos = [
+    ...(liveDetails?.photos || []),
+    ...(stop.photos && stop.photos.length > 0 ? stop.photos : []),
+    ...(stop.image ? [stop.image] : []),
+  ];
+  const uniquePhotos = Array.from(new Set(rawPhotos.filter(Boolean)));
+  const fallbackSightPhotos = [
+    "https://images.unsplash.com/photo-1543783207-ec64e4d95325?auto=format&fit=crop&w=1200&q=80",
+    "https://images.unsplash.com/photo-1579273166152-d725a4e2b755?auto=format&fit=crop&w=1200&q=80",
+    "https://images.unsplash.com/photo-1518998053901-5348d3961a04?auto=format&fit=crop&w=1200&q=80",
+    "https://images.unsplash.com/photo-1561055657-b9e0bf0fa360?auto=format&fit=crop&w=1200&q=80",
+    "https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=1200&q=80",
+    "https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?auto=format&fit=crop&w=1200&q=80",
+  ];
+  const photos =
+    uniquePhotos.length >= 6
+      ? uniquePhotos.slice(0, 10)
+      : [...uniquePhotos, ...fallbackSightPhotos].slice(0, 6);
+  const activePhoto = photos[photoIndex] || photos[0] || stop.image;
+
+  const handlePrev = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setPhotoIndex((prev) => (prev - 1 + photos.length) % photos.length);
+  };
+
+  const handleNext = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setPhotoIndex((prev) => (prev + 1) % photos.length);
+  };
+
+  const websiteUrl =
+    liveDetails?.websiteUrl ||
+    stop.websiteUrl ||
+    stop.googleMapsUri ||
+    `https://maps.google.com/?q=${encodeURIComponent(
+      stop.name + " " + stop.city
+    )}`;
+
+  let cleanFallbackDomain = "";
+  try {
+    const parsed = new URL(websiteUrl);
+    cleanFallbackDomain = parsed.hostname.replace(/^www\./, "");
+  } catch {
+    cleanFallbackDomain = `${stop.name.toLowerCase().replace(/[^a-z0-9]/g, "")}.cat`;
+  }
+
+  const domain =
+    liveDetails?.websiteDomain ||
+    stop.websiteDomain ||
+    cleanFallbackDomain;
+
+  const displayDescription =
+    liveDetails?.description ||
+    stop.description ||
+    `Explore the sights, architecture, and historic atmosphere of ${stop.name}. A must-visit destination for art lovers and those interested in urban culture.`;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/65 backdrop-blur-xs animate-fade-in"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl relative animate-scale-in max-h-[92vh] flex flex-col font-sans"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Top Hero Carousel */}
+        <div className="relative w-full h-64 sm:h-72 bg-neutral-950 overflow-hidden select-none shrink-0 group">
+          <img
+            src={activePhoto}
+            alt={stop.name}
+            className="w-full h-full object-cover transition-all duration-300"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/35 pointer-events-none" />
+
+          {/* Top-Left Photo Counter Pill */}
+          <div className="absolute top-3.5 left-3.5 z-20">
+            <div className="px-2.5 py-1 rounded-full bg-black/55 backdrop-blur-xs text-white text-xs font-semibold flex items-center gap-1.5 shadow-md border border-white/10 pointer-events-none">
+              <Camera className="size-3.5" />
+              <span>
+                {photoIndex + 1} / {photos.length}
+              </span>
+            </div>
+          </div>
+
+          {/* Top-Right Favorite & Close Buttons */}
+          <div className="absolute top-3.5 right-3.5 flex items-center gap-2 z-20">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleSave?.(stop.id);
+              }}
+              className={`size-8.5 rounded-full flex items-center justify-center backdrop-blur-md transition-all cursor-pointer shadow-md ${
+                isSaved
+                  ? "bg-rose-500 text-white"
+                  : "bg-black/50 hover:bg-black/75 text-white"
+              }`}
+              title="Save place"
+            >
+              <Heart className={`size-4 ${isSaved ? "fill-white" : ""}`} />
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="size-8.5 rounded-full bg-black/50 hover:bg-black/75 backdrop-blur-md text-white flex items-center justify-center transition-all cursor-pointer shadow-md ml-0.5"
+              title="Close modal"
+            >
+              <X className="size-4.5" />
+            </button>
+          </div>
+
+          {/* Carousel Arrows */}
+          {photos.length > 1 && (
+            <>
+              <button
+                type="button"
+                onClick={handlePrev}
+                className="absolute left-2.5 top-1/2 -translate-y-1/2 size-8.5 rounded-full bg-black/45 hover:bg-black/75 text-white flex items-center justify-center backdrop-blur-xs transition-all cursor-pointer shadow-md z-10"
+                title="Previous photo"
+              >
+                <ChevronLeft className="size-5" />
+              </button>
+              <button
+                type="button"
+                onClick={handleNext}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 size-8.5 rounded-full bg-black/45 hover:bg-black/75 text-white flex items-center justify-center backdrop-blur-xs transition-all cursor-pointer shadow-md z-10"
+                title="Next photo"
+              >
+                <ChevronRight className="size-5" />
+              </button>
+            </>
+          )}
+
+          {/* Filmstrip row (5 thumbnails) */}
+          <div className="absolute bottom-2.5 left-2.5 right-2.5 grid grid-cols-5 gap-1.5 z-10">
+            {photos.slice(0, 5).map((ph, idx) => {
+              const isFifth = idx === 4;
+              const hasMore = photos.length > 5;
+              const isCurrent = photoIndex === idx;
+
+              return (
+                <div
+                  key={idx}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setPhotoIndex(idx);
+                  }}
+                  className={`relative h-12 sm:h-14 rounded-xl overflow-hidden cursor-pointer transition-all ${
+                    isCurrent
+                      ? "ring-2.5 ring-[#485C11] scale-102"
+                      : "opacity-85 hover:opacity-100 border border-white/20"
+                  }`}
+                >
+                  <img
+                    src={ph}
+                    alt={`Preview ${idx + 1}`}
+                    className="w-full h-full object-cover"
+                  />
+                  {isFifth && hasMore && (
+                    <div className="absolute inset-0 bg-black/60 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center backdrop-blur-2xs">
+                      +{photos.length - 4}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Modal Scrollable Content Area */}
+        <div className="p-5 sm:p-6 overflow-y-auto space-y-4 flex-1">
+          {/* Header Row: Title, Subtitle, Category & Rating */}
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="text-xl sm:text-2xl font-extrabold text-neutral-900 tracking-tight leading-snug">
+                {stop.name}
+              </h2>
+
+              <div className="flex items-center gap-2 mt-1 text-xs sm:text-sm text-neutral-500 font-medium flex-wrap">
+                <span>
+                  {stop.day} · {stop.city}
+                </span>
+                <span className="px-2.5 py-0.5 rounded-lg bg-neutral-100 text-neutral-700 text-xs font-semibold capitalize">
+                  {stop.primaryType
+                    ? stop.primaryType.replace(/_/g, " ")
+                    : "Museum"}
+                </span>
+              </div>
+            </div>
+
+            {/* Rating Box */}
+            <div className="flex flex-col items-end shrink-0">
+              <div className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 font-extrabold text-sm shadow-2xs">
+                <Star className="size-3.5 fill-[#d97706] text-[#d97706]" />
+                <span>{stop.rating || 4.9}</span>
+              </div>
+              <span className="text-[11px] text-neutral-400 font-normal text-right mt-0.5">
+                (
+                {stop.userRatingCount
+                  ? stop.userRatingCount.toLocaleString()
+                  : 159}{" "}
+                reviews)
+              </span>
+            </div>
+          </div>
+
+          {/* Description */}
+          <p className="text-xs sm:text-[13px] text-neutral-600 leading-relaxed font-normal">
+            {displayDescription}
+          </p>
+
+          {/* 2×2 Quick Info Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+            {/* Card 1: Hours */}
+            <div className="p-3.5 rounded-2xl bg-neutral-50/80 border border-neutral-200/60 flex items-center gap-3 shadow-2xs">
+              <div className="size-9 rounded-full bg-white text-neutral-700 flex items-center justify-center shrink-0 border border-neutral-200/60 shadow-2xs">
+                <Clock className="size-4 text-neutral-700" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[11px] font-medium text-neutral-500">
+                  Hours
+                </div>
+                <div className="text-xs sm:text-sm font-bold text-neutral-900 mt-0.5 truncate">
+                  {stop.startTime} – {stop.endTime}
+                </div>
+              </div>
+            </div>
+
+            {/* Card 2: Entry Fee */}
+            <div className="p-3.5 rounded-2xl bg-neutral-50/80 border border-neutral-200/60 flex items-center gap-3 shadow-2xs">
+              <div className="size-9 rounded-full bg-white text-neutral-700 flex items-center justify-center shrink-0 border border-neutral-200/60 shadow-2xs">
+                <Ticket className="size-4 text-neutral-700" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[11px] font-medium text-neutral-500">
+                  Entry Fee
+                </div>
+                <div className="text-xs sm:text-sm font-bold text-neutral-900 mt-0.5 truncate">
+                  {typeof stop.estimatedCost === "number" &&
+                  stop.estimatedCost > 0
+                    ? `₹${stop.estimatedCost}`
+                    : "€16 – €18"}
+                </div>
+              </div>
+            </div>
+
+            {/* Card 3: Address */}
+            <div className="p-3.5 rounded-2xl bg-neutral-50/80 border border-neutral-200/60 flex items-center gap-3 shadow-2xs">
+              <div className="size-9 rounded-full bg-white text-neutral-700 flex items-center justify-center shrink-0 border border-neutral-200/60 shadow-2xs">
+                <MapPin className="size-4 text-neutral-700" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[11px] font-medium text-neutral-500">
+                  Address
+                </div>
+                <div className="text-xs text-neutral-700 line-clamp-2 leading-tight mt-0.5">
+                  {stop.address || stop.city}
+                </div>
+              </div>
+            </div>
+
+            {/* Card 4: Official Website */}
+            <div className="p-3.5 rounded-2xl bg-neutral-50/80 border border-neutral-200/60 flex items-center gap-3 shadow-2xs">
+              <div className="size-9 rounded-full bg-white text-neutral-700 flex items-center justify-center shrink-0 border border-neutral-200/60 shadow-2xs">
+                <Globe className="size-4 text-neutral-700" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[11px] font-medium text-neutral-500">
+                  Official Website
+                </div>
+                <a
+                  href={websiteUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-semibold text-[#1a73e8] hover:underline flex items-center gap-1 truncate mt-0.5"
+                >
+                  <span className="truncate">{domain}</span>
+                  <ExternalLink className="size-3 shrink-0" />
+                </a>
+              </div>
+            </div>
+          </div>
+
+          {/* Action Buttons Row */}
+          <div className="flex items-center gap-3 pt-2">
+            {/* View on Map Button */}
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onViewOnMap(stop);
+              }}
+              className="flex-1 py-3 px-4 rounded-2xl border border-neutral-300 hover:bg-neutral-50 text-neutral-800 text-xs sm:text-sm font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-2xs"
+            >
+              <Navigation className="size-4 text-neutral-700" />
+              <span>View on Map</span>
+            </button>
+
+            {/* Add to Itinerary Button */}
+            <button
+              type="button"
+              onClick={() => setIsAdded((prev) => !prev)}
+              className="flex-1 py-3 px-4 rounded-2xl bg-[#3a4d1a] hover:bg-[#2d3c14] text-white text-xs sm:text-sm font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+            >
+              {isAdded ? (
+                <>
+                  <CheckCircle2 className="size-4 text-emerald-300" />
+                  <span>Added to Itinerary</span>
+                </>
+              ) : (
+                <>
+                  <PlusCircle className="size-4 text-white" />
+                  <span>Add to Itinerary</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ItineraryMapPanel({ initialPlan }: ItineraryMapPanelProps) {
   const [stops, setStops] = useState<GroundedActivityStop[]>([]);
+  const [detailModalStop, setDetailModalStop] = useState<GroundedActivityStop | null>(null);
+  const [savedStops, setSavedStops] = useState<string[]>([]);
   const [tripMetadata, setTripMetadata] = useState<{
     summary?: string;
     destinations?: string[];
@@ -633,12 +1383,19 @@ export function ItineraryMapPanel({ initialPlan }: ItineraryMapPanelProps) {
             const rawLng = act.longitude ?? cached?.longitude;
             const hasLat = typeof rawLat === "number" && Number.isFinite(rawLat);
             const hasLng = typeof rawLng === "number" && Number.isFinite(rawLng);
+            const rawImage = act.image || act.photo || cached?.image || null;
+            const rawPhotos = act.photos || cached?.photos || (rawImage ? [rawImage] : []);
+            const stopName = act.name || `Activity ${actIdx + 1}`;
+            const initialImage = rawImage || getCategoryFallbackImage(stopName, act.primaryType, cityName);
+            const rawDescription = act.description || act.summary || act.details || act.notes || cached?.description || cached?.editorialSummary || "";
+            const initialDescription = rawDescription || generatePlaceDescription(stopName, act.primaryType || cached?.primaryType, cityName, act.slot);
 
             parsedStops.push({
               id: stopId,
               slot: act.slot || "activity",
               placeId: act.placeId || cached?.placeId || "",
-              name: act.name || `Activity ${actIdx + 1}`,
+              name: stopName,
+              description: initialDescription,
               startTime: act.startTime || "09:00",
               endTime: act.endTime || "11:30",
               estimatedCost: act.estimatedCost,
@@ -654,6 +1411,8 @@ export function ItineraryMapPanel({ initialPlan }: ItineraryMapPanelProps) {
               primaryType: act.primaryType || cached?.primaryType || null,
               coordinatesUnavailable: false,
               isResolving: !hasLat || !hasLng,
+              image: initialImage,
+              photos: rawPhotos,
             });
           });
         }
@@ -682,12 +1441,18 @@ export function ItineraryMapPanel({ initialPlan }: ItineraryMapPanelProps) {
           const cached = planData.coordinateCache?.[stopId];
           const hasLat = typeof cached?.latitude === "number" && Number.isFinite(cached.latitude);
           const hasLng = typeof cached?.longitude === "number" && Number.isFinite(cached.longitude);
+          const rawImage = cached?.image || null;
+          const rawPhotos = cached?.photos || (rawImage ? [rawImage] : []);
+          const initialImage = rawImage || getCategoryFallbackImage(actName, cached?.primaryType, cityName);
+          const rawDescription = cached?.description || cached?.editorialSummary || "";
+          const initialDescription = rawDescription || generatePlaceDescription(actName, cached?.primaryType, cityName, key);
 
           parsedStops.push({
             id: stopId,
             slot: key,
             placeId: cached?.placeId || "",
             name: actName,
+            description: initialDescription,
             startTime,
             endTime,
             day: dayLabel,
@@ -701,6 +1466,8 @@ export function ItineraryMapPanel({ initialPlan }: ItineraryMapPanelProps) {
             primaryType: cached?.primaryType || null,
             coordinatesUnavailable: false,
             isResolving: !hasLat || !hasLng,
+            image: initialImage,
+            photos: rawPhotos,
           });
         });
       });
@@ -759,20 +1526,26 @@ export function ItineraryMapPanel({ initialPlan }: ItineraryMapPanelProps) {
               latitude: found.latitude,
               longitude: found.longitude,
               placeId: found.placeId,
+              description: found.description || s.description,
               address: found.address,
               rating: found.rating,
               userRatingCount: found.userRatingCount,
               primaryType: found.primaryType,
+              image: found.image || s.image,
+              photos: found.photos || s.photos,
             });
             return {
               ...s,
               latitude: found.latitude,
               longitude: found.longitude,
               placeId: found.placeId || s.placeId,
+              description: found.description || s.description,
               address: found.address || s.address,
               rating: found.rating ?? s.rating,
               userRatingCount: found.userRatingCount ?? s.userRatingCount,
               primaryType: found.primaryType ?? s.primaryType,
+              image: found.image || s.image,
+              photos: found.photos || s.photos,
               coordinatesUnavailable: false,
               isResolving: false,
             };
@@ -790,7 +1563,9 @@ export function ItineraryMapPanel({ initialPlan }: ItineraryMapPanelProps) {
     if (stops.length === 0) return;
 
     const unmappedStops = stops.filter(
-      (s) => (s.latitude === undefined || s.longitude === undefined) && s.coordinatesUnavailable !== true
+      (s) =>
+        ((s.latitude === undefined || s.longitude === undefined) || (!s.photos || s.photos.length === 0)) &&
+        s.coordinatesUnavailable !== true
     );
     if (unmappedStops.length === 0) return;
     if (isResolvingRef.current) return;
@@ -822,10 +1597,13 @@ export function ItineraryMapPanel({ initialPlan }: ItineraryMapPanelProps) {
                 latitude: found.latitude,
                 longitude: found.longitude,
                 placeId: found.placeId || s.placeId,
+                description: found.description || s.description,
                 address: found.address || s.address,
                 rating: found.rating ?? s.rating,
                 userRatingCount: found.userRatingCount ?? s.userRatingCount,
                 primaryType: found.primaryType || s.primaryType,
+                image: found.image || s.image,
+                photos: found.photos || s.photos,
                 coordinatesUnavailable: false,
                 isResolving: false,
               };
@@ -845,10 +1623,13 @@ export function ItineraryMapPanel({ initialPlan }: ItineraryMapPanelProps) {
               latitude: r.latitude,
               longitude: r.longitude,
               placeId: r.placeId,
+              description: r.description,
               address: r.address,
               rating: r.rating,
               userRatingCount: r.userRatingCount,
               primaryType: r.primaryType,
+              image: r.image,
+              photos: r.photos,
             });
           }
         });
@@ -1036,11 +1817,17 @@ export function ItineraryMapPanel({ initialPlan }: ItineraryMapPanelProps) {
       marker.addListener("click", () => {
         setSelectedStopId(stop.id);
         if (infoWindow) {
+          const stopImg = stop.image || getCategoryFallbackImage(stop.name, stop.slot, stop.city);
+          const fallbackImg = getCategoryFallbackImage(stop.name, stop.slot, stop.city);
           infoWindow.setContent(`
-            <div style="font-family: sans-serif; padding: 6px 2px; max-width: 240px;">
+            <div style="font-family: system-ui, -apple-system, sans-serif; padding: 2px; max-width: 240px;">
+              <div style="width: 100%; height: 110px; border-radius: 10px; overflow: hidden; margin-bottom: 8px; background: #e5e7eb;">
+                <img src="${stopImg}" alt="${stop.name}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.onerror=null;this.src='${fallbackImg}';" />
+              </div>
               <span style="font-size: 10px; font-weight: 700; color: #485C11; text-transform: uppercase;">Stop ${markerNumber} · ${stop.day}</span>
-              <h4 style="margin: 2px 0 4px; font-size: 14px; font-weight: 700; color: #111827;">${stop.name}</h4>
+              <h4 style="margin: 2px 0 4px; font-size: 14px; font-weight: 700; color: #111827; line-height: 1.25;">${stop.name}</h4>
               <p style="margin: 0; font-size: 11px; color: #4b5563;">⏰ ${stop.startTime} – ${stop.endTime}</p>
+              ${stop.description ? `<p style="margin: 4px 0 0; font-size: 11px; color: #4b5563; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${stop.description}</p>` : ""}
               ${stop.address ? `<p style="margin: 4px 0 0; font-size: 10px; color: #6b7280; line-height: 1.3;">📍 ${stop.address}</p>` : ""}
             </div>
           `);
@@ -1110,12 +1897,21 @@ export function ItineraryMapPanel({ initialPlan }: ItineraryMapPanelProps) {
 
         marker.addListener("click", () => {
           if (infoWindow) {
+            const rawPlacePhoto = (place.photos && place.photos.length > 0)
+              ? (typeof place.photos[0] === "string" ? place.photos[0] : (place.photos[0] as any).name)
+              : null;
+            const placeImg = rawPlacePhoto ? toPhotoProxyUrl(rawPlacePhoto) : getCategoryFallbackImage(place.name, place.primaryType);
+            const fallbackImg = getCategoryFallbackImage(place.name, place.primaryType);
+
             infoWindow.setContent(`
-              <div style="font-family: sans-serif; padding: 4px; max-width: 230px;">
+              <div style="font-family: system-ui, -apple-system, sans-serif; padding: 2px; max-width: 240px;">
+                <div style="width: 100%; height: 110px; border-radius: 10px; overflow: hidden; margin-bottom: 8px; background: #e5e7eb;">
+                  <img src="${placeImg}" alt="${place.name}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.onerror=null;this.src='${fallbackImg}';" />
+                </div>
                 <span style="font-size: 9px; font-weight: 700; color: ${pinFill}; text-transform: uppercase;">${emojiIcon} ${placeLabel}</span>
-                <h4 style="margin: 2px 0 4px; font-size: 13px; font-weight: 700; color: #111827;">${place.name}</h4>
+                <h4 style="margin: 2px 0 4px; font-size: 13px; font-weight: 700; color: #111827; line-height: 1.25;">${place.name}</h4>
                 ${place.rating ? `<p style="margin: 0; font-size: 11px; color: #d97706; font-weight: 600;">⭐ ${place.rating} (${place.userRatingCount || 0} reviews)</p>` : ""}
-                ${place.address ? `<p style="margin: 4px 0 0; font-size: 10px; color: #6b7280;">📍 ${place.address}</p>` : ""}
+                ${place.address ? `<p style="margin: 4px 0 0; font-size: 10px; color: #6b7280; line-height: 1.3;">📍 ${place.address}</p>` : ""}
               </div>
             `);
             infoWindow.open(map, marker);
@@ -1156,12 +1952,22 @@ export function ItineraryMapPanel({ initialPlan }: ItineraryMapPanelProps) {
 
         marker.addListener("click", () => {
           if (infoWindow) {
+            const rawHotelPhoto = (hotel.photos && hotel.photos.length > 0)
+              ? (typeof hotel.photos[0] === "string" ? hotel.photos[0] : (hotel.photos[0] as any).name)
+              : null;
+            const hotelImg = rawHotelPhoto
+              ? toPhotoProxyUrl(rawHotelPhoto)
+              : "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80";
+
             infoWindow.setContent(`
-              <div style="font-family: sans-serif; padding: 4px; max-width: 220px;">
+              <div style="font-family: system-ui, -apple-system, sans-serif; padding: 2px; max-width: 240px;">
+                <div style="width: 100%; height: 110px; border-radius: 10px; overflow: hidden; margin-bottom: 8px; background: #e5e7eb;">
+                  <img src="${hotelImg}" alt="${hotel.name}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.onerror=null;this.src='https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80';" />
+                </div>
                 <span style="font-size: 9px; font-weight: 700; color: #2563eb; text-transform: uppercase;">Verified Hotel</span>
-                <h4 style="margin: 2px 0 4px; font-size: 13px; font-weight: 700; color: #111827;">${hotel.name}</h4>
+                <h4 style="margin: 2px 0 4px; font-size: 13px; font-weight: 700; color: #111827; line-height: 1.25;">${hotel.name}</h4>
                 ${hotel.rating ? `<p style="margin: 0; font-size: 11px; color: #d97706; font-weight: 600;">⭐ ${hotel.rating} (${hotel.userRatingCount || 0} reviews)</p>` : ""}
-                ${hotel.address ? `<p style="margin: 4px 0 0; font-size: 10px; color: #6b7280;">📍 ${hotel.address}</p>` : ""}
+                ${hotel.address ? `<p style="margin: 4px 0 0; font-size: 10px; color: #6b7280; line-height: 1.3;">📍 ${hotel.address}</p>` : ""}
               </div>
             `);
             infoWindow.open(map, marker);
@@ -1185,6 +1991,29 @@ export function ItineraryMapPanel({ initialPlan }: ItineraryMapPanelProps) {
     }
   }, [mappedStops, selectedStopId, activeTab, nearbyPlaces, hotels, mapReady, destinationCoords]);
 
+  const toggleSaveStop = useCallback((stopId: string) => {
+    setSavedStops((prev) =>
+      prev.includes(stopId) ? prev.filter((id) => id !== stopId) : [...prev, stopId]
+    );
+  }, []);
+
+  // Expose global callback for Google Maps InfoWindow clicks
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      (window as any).__openStopDetails = (id: string) => {
+        const target = stops.find((s) => s.id === id);
+        if (target) {
+          setDetailModalStop(target);
+        }
+      };
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        delete (window as any).__openStopDetails;
+      }
+    };
+  }, [stops]);
+
   // Handle focusing/pinpointing a stop on the map
   const handleFocusStop = useCallback((stop: GroundedActivityStop, index: number) => {
     setSelectedStopId(stop.id);
@@ -1194,12 +2023,23 @@ export function ItineraryMapPanel({ initialPlan }: ItineraryMapPanelProps) {
     }
     const marker = stopMarkerMapRef.current.get(stop.id);
     if (marker && infoWindowRef.current && mapInstanceRef.current) {
+      const stopImg = stop.image || getCategoryFallbackImage(stop.name, stop.slot, stop.city);
+      const fallbackImg = getCategoryFallbackImage(stop.name, stop.slot, stop.city);
       infoWindowRef.current.setContent(`
-        <div style="font-family: sans-serif; padding: 6px 2px; max-width: 240px;">
-          <span style="font-size: 10px; font-weight: 700; color: #485C11; text-transform: uppercase;">Stop ${index + 1} · ${stop.day}</span>
-          <h4 style="margin: 2px 0 4px; font-size: 14px; font-weight: 700; color: #111827;">${stop.name}</h4>
-          <p style="margin: 0; font-size: 11px; color: #4b5563;">⏰ ${stop.startTime} – ${stop.endTime}</p>
-          ${stop.address ? `<p style="margin: 4px 0 0; font-size: 10px; color: #6b7280; line-height: 1.3;">📍 ${stop.address}</p>` : ""}
+        <div style="font-family: system-ui, -apple-system, sans-serif; padding: 2px; max-width: 250px;">
+          <div style="width: 100%; height: 110px; border-radius: 10px; overflow: hidden; margin-bottom: 8px; background: #e5e7eb;">
+            <img src="${stopImg}" alt="${stop.name}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.onerror=null;this.src='${fallbackImg}';" />
+          </div>
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+            <span style="font-size: 10px; font-weight: 700; color: #485C11; text-transform: uppercase;">Stop ${index + 1} · ${stop.day}</span>
+            ${stop.rating ? `<span style="font-size: 10px; font-weight: 700; color: #d97706; background: #fef3c7; padding: 1px 6px; border-radius: 4px;">★ ${stop.rating}</span>` : ""}
+          </div>
+          <h4 style="margin: 2px 0 4px; font-size: 14px; font-weight: 700; color: #111827; line-height: 1.25;">${stop.name}</h4>
+          <p style="margin: 0 0 6px; font-size: 11px; color: #4b5563;">⏰ ${stop.startTime} – ${stop.endTime}</p>
+          ${stop.description ? `<p style="margin: 0 0 8px; font-size: 11px; color: #4b5563; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${stop.description}</p>` : ""}
+          <button onclick="window.__openStopDetails && window.__openStopDetails('${stop.id}')" style="width: 100%; background: #485C11; color: white; border: none; border-radius: 8px; padding: 6px 10px; font-size: 11px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;">
+            View Details →
+          </button>
         </div>
       `);
       infoWindowRef.current.open(mapInstanceRef.current, marker);
@@ -1221,6 +2061,44 @@ export function ItineraryMapPanel({ initialPlan }: ItineraryMapPanelProps) {
       prev.map((s) => (s.id === stopId ? { ...s, coordinatesUnavailable: false, isResolving: true } : s))
     );
   }, []);
+
+  // Adapt PlaceResult for Detail Modal
+  const openDetailsForPlace = useCallback((place: PlaceResult, type: "attraction" | "hotel" = "attraction") => {
+    const rawPlacePhoto = (place.photos && place.photos.length > 0)
+      ? (typeof place.photos[0] === "string" ? place.photos[0] : (place.photos[0] as any).name)
+      : null;
+    const placeImg = rawPlacePhoto ? toPhotoProxyUrl(rawPlacePhoto) : getCategoryFallbackImage(place.name, place.primaryType);
+    const placePhotos = Array.isArray(place.photos)
+      ? place.photos.map((p) => {
+          const pName = typeof p === "string" ? p : (p as any)?.name;
+          return pName ? toPhotoProxyUrl(pName) : null;
+        }).filter(Boolean) as string[]
+      : [];
+
+    const adaptedStop: GroundedActivityStop = {
+      id: place.placeId,
+      placeId: place.placeId,
+      name: place.name,
+      slot: type === "hotel" ? "LODGING" : "ATTRACTION",
+      startTime: "10:00",
+      endTime: "18:00",
+      estimatedCost: typeof place.priceLevel === "number" ? place.priceLevel * 15 : undefined,
+      description: `Explore the vibrant atmosphere and popular features of ${place.name}, located in ${destinationName || "the city center"}.`,
+      day: "Featured",
+      dayNumber: 1,
+      city: destinationName || "City Center",
+      latitude: place.latitude,
+      longitude: place.longitude,
+      address: place.address || `${destinationName || "City Center"}`,
+      rating: place.rating,
+      userRatingCount: place.userRatingCount,
+      primaryType: place.primaryType || (type === "hotel" ? "hotel" : "point_of_interest"),
+      image: placeImg,
+      photos: placePhotos.length > 0 ? placePhotos : (placeImg ? [placeImg] : []),
+      googleMapsUri: place.googleMapsUri || `https://maps.google.com/?q=${encodeURIComponent(place.name + " " + (destinationName || ""))}`,
+    };
+    setDetailModalStop(adaptedStop);
+  }, [destinationName]);
 
   // Execute Route Calculation
   const handleCalculateRoute = useCallback(async () => {
@@ -1442,7 +2320,7 @@ export function ItineraryMapPanel({ initialPlan }: ItineraryMapPanelProps) {
   return (
     <div className="flex flex-col lg:flex-row h-full w-full min-h-[680px] lg:h-[calc(100vh-80px)] bg-[#FAFBF8] border border-[#e5e7db] rounded-2xl overflow-hidden shadow-lg">
       {/* LEFT PANEL: Controls, Filters & List */}
-      <div className="w-full lg:w-[480px] xl:w-[520px] flex flex-col h-[520px] lg:h-full border-b lg:border-b-0 lg:border-r border-[#e5e7db] bg-white shrink-0">
+      <div className="w-full lg:w-[500px] xl:w-[540px] flex flex-col h-[520px] lg:h-full border-b lg:border-b-0 lg:border-r border-[#e5e7db] bg-white shrink-0">
         {/* Header & Itinerary Title */}
         <div className="p-4 border-b border-[#e5e7db] bg-white sticky top-0 z-10">
           <div className="flex items-center justify-between gap-2 mb-1">
@@ -1665,354 +2543,447 @@ export function ItineraryMapPanel({ initialPlan }: ItineraryMapPanelProps) {
                 </div>
               ) : (
                 visibleStops.map((stop, index) => {
-                  const isSelected = stop.id === selectedStopId;
-                  const isMapped = typeof stop.latitude === "number" && typeof stop.longitude === "number";
+                const isSelected = stop.id === selectedStopId;
+                const isMapped = typeof stop.latitude === "number" && typeof stop.longitude === "number";
+                const stopImage = stop.image || getCategoryFallbackImage(stop.name, stop.slot, stop.city);
 
-                  return (
-                    <div
-                      key={stop.id}
-                      id={`stop-card-${stop.id}`}
-                      onClick={() => handleFocusStop(stop, index)}
-                      className={`p-3.5 rounded-2xl border transition-all duration-200 cursor-pointer ${
-                        isSelected
-                          ? "bg-[#f4f7ee] border-[#485C11] shadow-md ring-1 ring-[#485C11]/30"
-                          : "bg-white border-[#e5e7db] hover:border-[#485C11]/40 hover:shadow-xs"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-start gap-2.5">
-                          {/* Stop Number Badge */}
-                          <div
-                            className={`w-7 h-7 rounded-xl flex items-center justify-center text-xs font-bold shrink-0 transition-colors ${
-                              isSelected
-                                ? "bg-[#485C11] text-white shadow-xs"
-                                : "bg-[#f0f4e8] text-[#485C11] border border-[#485C11]/20"
-                            }`}
-                          >
-                            {index + 1}
-                          </div>
-                          <div>
-                            {/* Real Activity Name */}
-                            <h3 className="text-sm font-bold text-[#1a1a1a] leading-tight">
-                              {stop.name}
-                            </h3>
+                return (
+                  <div
+                    key={stop.id}
+                    id={`stop-card-${stop.id}`}
+                    onClick={() => {
+                      const wasSelected = stop.id === selectedStopId;
+                      handleFocusStop(stop, index);
+                      if (wasSelected) {
+                        setDetailModalStop(stop);
+                      }
+                    }}
+                    className={`group relative rounded-2xl border transition-all duration-200 cursor-pointer overflow-hidden p-4 sm:p-4.5 ${
+                      isSelected
+                        ? "bg-[#f4f7ee] border-[#485C11] shadow-md ring-2 ring-[#485C11]/30"
+                        : "bg-white border-[#e5e7db] hover:border-[#485C11]/50 hover:shadow-md"
+                    }`}
+                  >
+                    <div className="flex items-start gap-3.5 sm:gap-4">
+                      {/* Left Column: Image Thumbnail with Overlay Badges */}
+                      <div className="relative w-32 sm:w-36 h-36 sm:h-40 rounded-xl overflow-hidden shrink-0 bg-gray-100 shadow-inner">
+                        <img
+                          src={stopImage}
+                          alt={stop.name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).src = getCategoryFallbackImage(
+                              stop.name,
+                              stop.slot,
+                              stop.city
+                            );
+                          }}
+                        />
+                        {/* Subtle gradient overlay to make overlaid badges and text pop */}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/30 pointer-events-none" />
 
-                            {/* City and Day metadata */}
-                            <p className="text-[11px] text-[#6b7280] mt-0.5 font-medium">
-                              {stop.day} · {stop.city}
-                              {stop.slot && (
-                                <span className="ml-1.5 px-1.5 py-0.5 rounded bg-gray-100 text-[#4b5563] text-[9.5px] uppercase font-semibold">
-                                  {stop.slot}
-                                </span>
-                              )}
-                            </p>
-                          </div>
+                        {/* Stop Number Badge */}
+                        <div
+                          className={`absolute top-2.5 left-2.5 w-7 h-7 rounded-lg flex items-center justify-center text-xs font-extrabold shadow-md transition-colors ${
+                            isSelected
+                              ? "bg-[#485C11] text-white ring-1 ring-white/50"
+                              : "bg-white/95 text-[#485C11] font-extrabold border border-[#485C11]/20"
+                          }`}
+                        >
+                          {index + 1}
                         </div>
 
-                        {/* Estimated Cost if present */}
-                        {typeof stop.estimatedCost === "number" && stop.estimatedCost > 0 && (
-                          <span className="text-xs font-bold text-[#485C11] shrink-0">
-                            ₹{stop.estimatedCost}
-                          </span>
+                        {/* Star Rating Badge (if available) */}
+                        {stop.rating ? (
+                          <div className="absolute top-2.5 right-2.5 flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-white/95 backdrop-blur-xs text-[10px] font-bold text-[#d97706] shadow-xs">
+                            <Star className="w-3 h-3 fill-[#d97706]" />
+                            <span>{stop.rating}</span>
+                          </div>
+                        ) : null}
+
+                        {/* Time Slot Tag (Morning / Afternoon / Evening) */}
+                        {stop.slot && (
+                          <div className="absolute bottom-2.5 left-2.5 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-xs text-[9.5px] uppercase font-extrabold text-white tracking-wider border border-white/20">
+                            {stop.slot}
+                          </div>
                         )}
                       </div>
 
-                      {/* Time & Coordinate status */}
-                      <div className="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-gray-100 text-xs">
-                        <span className="flex items-center gap-1 text-[#4b5563] font-medium text-[11px]">
-                          <Clock className="w-3 h-3 text-[#485C11]" />
-                          {stop.startTime} – {stop.endTime}
-                        </span>
+                      {/* Right Column: Stop Details */}
+                      <div className="flex-1 min-w-0 flex flex-col justify-between self-stretch py-0.5">
+                        {/* Top Line: Title & Cost */}
+                        <div>
+                          <div className="flex items-start justify-between gap-2">
+                            <h3 className="text-[15px] sm:text-base font-bold text-[#1a1a1a] leading-snug line-clamp-2 group-hover:text-[#485C11] transition-colors">
+                              {stop.name}
+                            </h3>
+                            {typeof stop.estimatedCost === "number" && stop.estimatedCost > 0 && (
+                              <span className="text-xs font-bold text-[#485C11] bg-[#DFECC6]/60 px-2.5 py-0.5 rounded-full border border-[#8E9C78]/40 shrink-0">
+                                ₹{stop.estimatedCost}
+                              </span>
+                            )}
+                          </div>
 
-                        <div className="flex items-center gap-1.5">
-                          {isMapped && (
+                          {/* Day & City & Category */}
+                          <div className="text-xs text-[#6b7280] mt-1 font-medium flex items-center gap-1.5 flex-wrap">
+                            <span>{stop.day} · {stop.city}</span>
+                            {stop.primaryType && (
+                              <span className="px-2 py-0.5 rounded bg-gray-100 text-[#4b5563] text-[10px] capitalize font-semibold">
+                                {stop.primaryType.replace(/_/g, " ")}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Place Description */}
+                          {stop.description && (
+                            <p className="text-xs sm:text-[13px] text-[#4b5563] leading-relaxed line-clamp-2 sm:line-clamp-3 mt-1.5 font-normal">
+                              {stop.description}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Bottom Area: Rating, Status & Details Action */}
+                        <div className="mt-2.5 pt-2 border-t border-gray-100 flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            {stop.userRatingCount && stop.rating ? (
+                              <span className="text-[11px] text-[#6b7280] font-normal truncate">
+                                ({stop.userRatingCount.toLocaleString()} reviews)
+                              </span>
+                            ) : null}
+
+                            {(!isMapped || stop.coordinatesUnavailable) && (
+                              <div className="flex items-center gap-2">
+                                {stop.coordinatesUnavailable ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleRetryStop(stop.id);
+                                    }}
+                                    className="text-[10px] text-amber-700 bg-amber-50 hover:bg-amber-100 px-2.5 py-0.5 rounded-full font-semibold flex items-center gap-1 border border-amber-200 transition-colors cursor-pointer"
+                                    title="Click to retry finding location on map"
+                                  >
+                                    <RefreshCw className="w-2.5 h-2.5" />
+                                    Retry Location
+                                  </button>
+                                ) : (
+                                  <span className="text-[10px] text-[#485C11] bg-[#485C11]/10 px-2.5 py-0.5 rounded-full font-medium flex items-center gap-1">
+                                    <Loader2 className="w-2.5 h-2.5 animate-spin text-[#485C11]" />
+                                    Locating...
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDetailModalStop(stop);
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-[#485C11] hover:bg-[#38480d] text-white text-[11px] font-semibold flex items-center gap-1 transition-all shadow-2xs cursor-pointer shrink-0 ml-auto"
+                            title="View Details"
+                          >
+                            <span>Details</span>
+                            <ChevronRight className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </>
+        )}
+
+        {/* TAB 2: NEARBY ATTRACTIONS */}
+        {activeTab === "nearby" && (
+          <div className="space-y-3">
+            {/* Location & Search Controls Header */}
+            <div className="p-3 bg-amber-50/60 rounded-xl border border-amber-200/60 space-y-2.5">
+              <div className="flex items-center justify-between gap-1">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <Compass className="w-3.5 h-3.5 text-[#d97706] shrink-0" />
+                  <span className="text-xs font-bold text-[#92400e] truncate">
+                    Near: {searchAnchor?.name || destinationName || "Destination"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    onClick={handleSearchCurrentMapView}
+                    disabled={loadingNearby}
+                    className="text-[11px] text-[#92400e] hover:text-[#78350f] font-semibold flex items-center gap-1 bg-white px-2 py-0.5 rounded-lg border border-amber-200 shadow-2xs hover:bg-amber-50/50 transition-all cursor-pointer"
+                    title="Search around current map view center"
+                  >
+                    <Crosshair className="w-3 h-3 text-[#d97706]" />
+                    Map Area
+                  </button>
+                  <button
+                    onClick={() => handleSearchNearby()}
+                    disabled={loadingNearby}
+                    className="text-[11px] text-[#92400e] hover:text-[#78350f] font-semibold flex items-center gap-1 bg-white px-2 py-0.5 rounded-lg border border-amber-200 shadow-2xs hover:bg-amber-50/50 transition-all cursor-pointer"
+                    title="Refresh nearby attractions"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${loadingNearby ? "animate-spin text-[#d97706]" : ""}`} />
+                    Refresh
+                  </button>
+                </div>
+              </div>
+
+              {/* Radius selector */}
+              <div className="flex items-center gap-1 text-[11px]">
+                <span className="text-gray-500 font-medium shrink-0">Radius:</span>
+                {[
+                  { label: "1.5 km", val: 1500 },
+                  { label: "3 km", val: 3000 },
+                  { label: "5 km", val: 5000 },
+                  { label: "10 km", val: 10000 },
+                ].map((r) => (
+                  <button
+                    key={r.val}
+                    onClick={() => setNearbyRadius(r.val)}
+                    className={`px-2 py-0.5 rounded-md font-semibold transition-all ${
+                      nearbyRadius === r.val
+                        ? "bg-[#d97706] text-white shadow-2xs"
+                        : "bg-white text-gray-600 border border-amber-200/70 hover:bg-amber-100/50"
+                    }`}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Category selector */}
+              <div className="flex items-center gap-1 overflow-x-auto pb-0.5 scrollbar-none text-[10.5px]">
+                {[
+                  { label: "⭐ All", key: "all" },
+                  { label: "🍽️ Restros", key: "restaurants" },
+                  { label: "☕ Cafes", key: "cafes" },
+                  { label: "🏛️ Culture", key: "culture" },
+                  { label: "🌳 Nature", key: "nature" },
+                  { label: "🛍️ Shopping", key: "shopping" },
+                ].map((c) => (
+                  <button
+                    key={c.key}
+                    onClick={() => setNearbyCategory(c.key)}
+                    className={`px-2.5 py-0.5 rounded-full font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                      nearbyCategory === c.key
+                        ? "bg-[#d97706] text-white shadow-2xs"
+                        : "bg-white/90 text-gray-700 border border-amber-200/60 hover:bg-white hover:text-black"
+                    }`}
+                  >
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {loadingNearby ? (
+              <div className="text-center py-10 text-xs text-[#6b7280]">
+                <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-[#d97706]" />
+                Searching real nearby places via Google Places...
+              </div>
+            ) : nearbyPlaces.length === 0 ? (
+              <div className="text-center py-8 text-xs text-[#9ca3af]">
+                No places found within {nearbyRadius / 1000}km. Try expanding the radius or switching categories.
+              </div>
+            ) : (
+              nearbyPlaces.map((place) => {
+                const pType = (place.primaryType || "").toLowerCase();
+                const tList = (place.types || []).map((t) => t.toLowerCase());
+                const isCafe = pType.includes("cafe") || pType.includes("coffee") || tList.includes("cafe") || tList.includes("coffee_shop");
+                const isRestro = pType.includes("restaurant") || tList.includes("restaurant") || pType.includes("food");
+                const isBakery = pType.includes("bakery") || tList.includes("bakery");
+
+                let badgeLabel = place.primaryType?.replace(/_/g, " ") || "Attraction";
+                let badgeStyle = "bg-amber-50 text-amber-800 border-amber-200";
+                let cardHover = "hover:border-[#d97706]/40";
+                let BadgeIcon = Compass;
+
+                if (isCafe) {
+                  badgeLabel = "Cafe & Coffee";
+                  badgeStyle = "bg-amber-100 text-amber-900 border-amber-300 font-bold";
+                  cardHover = "hover:border-amber-400";
+                  BadgeIcon = Coffee;
+                } else if (isRestro) {
+                  badgeLabel = "Restaurant";
+                  badgeStyle = "bg-rose-100 text-rose-900 border-rose-300 font-bold";
+                  cardHover = "hover:border-rose-400";
+                  BadgeIcon = Utensils;
+                } else if (isBakery) {
+                  badgeLabel = "Bakery & Desserts";
+                  badgeStyle = "bg-orange-100 text-orange-900 border-orange-300 font-bold";
+                  cardHover = "hover:border-orange-400";
+                  BadgeIcon = Utensils;
+                }
+
+                const rawPlacePhoto = (place.photos && place.photos.length > 0)
+                  ? (typeof place.photos[0] === "string" ? place.photos[0] : (place.photos[0] as any).name)
+                  : null;
+                const placeImg = rawPlacePhoto ? toPhotoProxyUrl(rawPlacePhoto) : getCategoryFallbackImage(place.name, place.primaryType);
+
+                return (
+                  <div
+                    key={place.placeId}
+                    onClick={() => {
+                      if (place.latitude && place.longitude && mapInstanceRef.current) {
+                        mapInstanceRef.current.panTo({ lat: place.latitude, lng: place.longitude });
+                        mapInstanceRef.current.setZoom(16);
+                      }
+                    }}
+                    className={`group p-3 rounded-2xl border border-[#e5e7db] bg-white ${cardHover} hover:shadow-md cursor-pointer transition-all duration-200`}
+                  >
+                    <div className="flex items-start gap-3">
+                      {/* Left Thumbnail */}
+                      <div className="relative w-24 h-24 rounded-xl overflow-hidden shrink-0 bg-gray-100 shadow-inner">
+                        <img
+                          src={placeImg}
+                          alt={place.name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).src = getCategoryFallbackImage(place.name, place.primaryType);
+                          }}
+                        />
+                        {place.rating ? (
+                          <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-white/95 backdrop-blur-xs text-[10px] font-bold text-[#d97706] shadow-xs">
+                            <Star className="w-2.5 h-2.5 fill-[#d97706]" />
+                            <span>{place.rating}</span>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      {/* Right Info */}
+                      <div className="flex-1 min-w-0 flex flex-col justify-between self-stretch py-0.5">
+                        <div>
+                          <div className="flex items-center justify-between gap-1 mb-1">
+                            <span className={`inline-flex items-center gap-1 text-[9.5px] px-2 py-0.5 rounded-full border ${badgeStyle}`}>
+                              <BadgeIcon className="w-2.5 h-2.5 shrink-0" />
+                              <span className="capitalize truncate max-w-[120px]">{badgeLabel}</span>
+                            </span>
                             <span className="text-[10px] text-[#485C11] font-semibold flex items-center gap-0.5">
                               <MapPin className="w-2.5 h-2.5" />
-                              View on Map
+                              Pin
                             </span>
+                          </div>
+
+                          <h4 className="text-xs font-bold text-[#1a1a1a] leading-tight line-clamp-2 group-hover:text-[#d97706] transition-colors">
+                            {place.name}
+                          </h4>
+
+                          {place.address && (
+                            <p className="text-[10px] text-[#6b7280] mt-1 line-clamp-1">📍 {place.address}</p>
                           )}
-                          {isMapped ? (
-                            <span className="text-[10px] text-green-700 bg-green-50 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1 border border-green-200">
-                              <CheckCircle2 className="w-2.5 h-2.5" />
-                              Mapped
-                            </span>
-                          ) : stop.coordinatesUnavailable ? (
+                        </div>
+
+                        <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-gray-100 text-[10px]">
+                          <span className="text-[#6b7280]">
+                            {isCafe ? "☕ Hot brews" : isRestro ? "🍽️ Dining" : "Attraction"}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            {place.userRatingCount ? (
+                              <span className="text-[#9ca3af] hidden sm:inline">{place.userRatingCount.toLocaleString()} reviews</span>
+                            ) : null}
                             <button
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleRetryStop(stop.id);
+                                openDetailsForPlace(place, "attraction");
                               }}
-                              className="text-[10px] text-amber-700 bg-amber-50 hover:bg-amber-100 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1 border border-amber-200 transition-colors cursor-pointer"
-                              title="Click to retry finding location on map"
+                              className="px-2 py-0.5 rounded-md bg-[#d97706] hover:bg-[#b45309] text-white text-[10px] font-semibold flex items-center gap-0.5 cursor-pointer shadow-2xs transition-all"
                             >
-                              <RefreshCw className="w-2.5 h-2.5" />
-                              Retry Location
+                              <span>Details</span>
+                              <ChevronRight className="w-2.5 h-2.5" />
                             </button>
-                          ) : (
-                            <span className="text-[10px] text-[#485C11] bg-[#485C11]/10 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
-                              <Loader2 className="w-2.5 h-2.5 animate-spin text-[#485C11]" />
-                              Locating...
-                            </span>
-                          )}
+                          </div>
                         </div>
                       </div>
-
-                      {/* Address preview */}
-                      {stop.address && (
-                        <p className="text-[10.5px] text-[#6b7280] mt-1.5 line-clamp-1">
-                          📍 {stop.address}
-                        </p>
-                      )}
-
-                      {/* Place ID metadata */}
-                      {stop.placeId && (
-                        <span className="block mt-1 text-[9px] font-mono text-[#9ca3af] truncate">
-                          ID: {stop.placeId}
-                        </span>
-                      )}
                     </div>
-                  );
-                })
-              )}
-            </>
-          )}
-
-          {/* TAB 2: NEARBY ATTRACTIONS */}
-          {activeTab === "nearby" && (
-            <div className="space-y-3">
-              {/* Location & Search Controls Header */}
-              <div className="p-3 bg-amber-50/60 rounded-xl border border-amber-200/60 space-y-2.5">
-                <div className="flex items-center justify-between gap-1">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <Compass className="w-3.5 h-3.5 text-[#d97706] shrink-0" />
-                    <span className="text-xs font-bold text-[#92400e] truncate">
-                      Near: {searchAnchor?.name || destinationName || "Destination"}
-                    </span>
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button
-                      onClick={handleSearchCurrentMapView}
-                      disabled={loadingNearby}
-                      className="text-[11px] text-[#92400e] hover:text-[#78350f] font-semibold flex items-center gap-1 bg-white px-2 py-0.5 rounded-lg border border-amber-200 shadow-2xs hover:bg-amber-50/50 transition-all cursor-pointer"
-                      title="Search around current map view center"
-                    >
-                      <Crosshair className="w-3 h-3 text-[#d97706]" />
-                      Map Area
-                    </button>
-                    <button
-                      onClick={() => handleSearchNearby()}
-                      disabled={loadingNearby}
-                      className="text-[11px] text-[#92400e] hover:text-[#78350f] font-semibold flex items-center gap-1 bg-white px-2 py-0.5 rounded-lg border border-amber-200 shadow-2xs hover:bg-amber-50/50 transition-all cursor-pointer"
-                      title="Refresh nearby attractions"
-                    >
-                      <RefreshCw className={`w-3 h-3 ${loadingNearby ? "animate-spin text-[#d97706]" : ""}`} />
-                      Refresh
-                    </button>
-                  </div>
-                </div>
+                );
+              })
+            )}
+          </div>
+        )}
 
-                {/* Radius selector */}
-                <div className="flex items-center gap-1 text-[11px]">
-                  <span className="text-gray-500 font-medium shrink-0">Radius:</span>
-                  {[
-                    { label: "1.5 km", val: 1500 },
-                    { label: "3 km", val: 3000 },
-                    { label: "5 km", val: 5000 },
-                    { label: "10 km", val: 10000 },
-                  ].map((r) => (
-                    <button
-                      key={r.val}
-                      onClick={() => setNearbyRadius(r.val)}
-                      className={`px-2 py-0.5 rounded-md font-semibold transition-all ${
-                        nearbyRadius === r.val
-                          ? "bg-[#d97706] text-white shadow-2xs"
-                          : "bg-white text-gray-600 border border-amber-200/70 hover:bg-amber-100/50"
-                      }`}
-                    >
-                      {r.label}
-                    </button>
-                  ))}
+        {/* TAB 3: HOTELS */}
+        {activeTab === "hotels" && (
+          <div className="space-y-3">
+            {/* Location & Search Controls Header */}
+            <div className="p-3 bg-blue-50/60 rounded-xl border border-blue-200/60 space-y-2.5">
+              <div className="flex items-center justify-between gap-1">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <Hotel className="w-3.5 h-3.5 text-[#2563eb] shrink-0" />
+                  <span className="text-xs font-bold text-[#1e40af] truncate">
+                    Hotels near {searchAnchor?.name || destinationName || "Destination"}
+                  </span>
                 </div>
-
-                {/* Category selector */}
-                <div className="flex items-center gap-1 overflow-x-auto pb-0.5 scrollbar-none text-[10.5px]">
-                  {[
-                    { label: "⭐ All", key: "all" },
-                    { label: "🍽️ Restros", key: "restaurants" },
-                    { label: "☕ Cafes", key: "cafes" },
-                    { label: "🏛️ Culture", key: "culture" },
-                    { label: "🌳 Nature", key: "nature" },
-                    { label: "🛍️ Shopping", key: "shopping" },
-                  ].map((c) => (
-                    <button
-                      key={c.key}
-                      onClick={() => setNearbyCategory(c.key)}
-                      className={`px-2.5 py-0.5 rounded-full font-semibold whitespace-nowrap transition-all cursor-pointer ${
-                        nearbyCategory === c.key
-                          ? "bg-[#d97706] text-white shadow-2xs"
-                          : "bg-white/90 text-gray-700 border border-amber-200/60 hover:bg-white hover:text-black"
-                      }`}
-                    >
-                      {c.label}
-                    </button>
-                  ))}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    onClick={handleSearchCurrentMapView}
+                    disabled={loadingHotels}
+                    className="text-[11px] text-[#1e40af] hover:text-[#1e3a8a] font-semibold flex items-center gap-1 bg-white px-2 py-0.5 rounded-lg border border-blue-200 shadow-2xs hover:bg-blue-50/50 transition-all cursor-pointer"
+                    title="Search around current map view center"
+                  >
+                    <Crosshair className="w-3 h-3 text-[#2563eb]" />
+                    Map Area
+                  </button>
+                  <button
+                    onClick={() => handleSearchHotels()}
+                    disabled={loadingHotels}
+                    className="text-[11px] text-[#1e40af] hover:text-[#1e3a8a] font-semibold flex items-center gap-1 bg-white px-2 py-0.5 rounded-lg border border-blue-200 shadow-2xs hover:bg-blue-50/50 transition-all cursor-pointer"
+                    title="Refresh verified hotels"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${loadingHotels ? "animate-spin text-[#2563eb]" : ""}`} />
+                    Refresh
+                  </button>
                 </div>
               </div>
 
-              {loadingNearby ? (
-                <div className="text-center py-10 text-xs text-[#6b7280]">
-                  <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-[#d97706]" />
-                  Searching real nearby places via Google Places...
-                </div>
-              ) : nearbyPlaces.length === 0 ? (
-                <div className="text-center py-8 text-xs text-[#9ca3af]">
-                  No places found within {nearbyRadius / 1000}km. Try expanding the radius or switching categories.
-                </div>
-              ) : (
-                nearbyPlaces.map((place) => {
-                  const pType = (place.primaryType || "").toLowerCase();
-                  const tList = (place.types || []).map((t) => t.toLowerCase());
-                  const isCafe = pType.includes("cafe") || pType.includes("coffee") || tList.includes("cafe") || tList.includes("coffee_shop");
-                  const isRestro = pType.includes("restaurant") || tList.includes("restaurant") || pType.includes("food");
-                  const isBakery = pType.includes("bakery") || tList.includes("bakery");
-
-                  let badgeLabel = place.primaryType?.replace(/_/g, " ") || "Attraction";
-                  let badgeStyle = "bg-amber-50 text-amber-800 border-amber-200";
-                  let cardHover = "hover:border-[#d97706]/40";
-                  let BadgeIcon = Compass;
-
-                  if (isCafe) {
-                    badgeLabel = "Cafe & Coffee";
-                    badgeStyle = "bg-amber-100 text-amber-900 border-amber-300 font-bold";
-                    cardHover = "hover:border-amber-400";
-                    BadgeIcon = Coffee;
-                  } else if (isRestro) {
-                    badgeLabel = "Restaurant";
-                    badgeStyle = "bg-rose-100 text-rose-900 border-rose-300 font-bold";
-                    cardHover = "hover:border-rose-400";
-                    BadgeIcon = Utensils;
-                  } else if (isBakery) {
-                    badgeLabel = "Bakery & Desserts";
-                    badgeStyle = "bg-orange-100 text-orange-900 border-orange-300 font-bold";
-                    cardHover = "hover:border-orange-400";
-                    BadgeIcon = Utensils;
-                  }
-
-                  return (
-                    <div
-                      key={place.placeId}
-                      onClick={() => {
-                        if (place.latitude && place.longitude && mapInstanceRef.current) {
-                          mapInstanceRef.current.panTo({ lat: place.latitude, lng: place.longitude });
-                          mapInstanceRef.current.setZoom(16);
-                        }
-                      }}
-                      className={`p-3 rounded-xl border border-[#e5e7db] bg-white ${cardHover} hover:shadow-xs cursor-pointer transition-all`}
-                    >
-                      <div className="flex items-start justify-between gap-1.5 mb-1">
-                        <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border ${badgeStyle}`}>
-                          <BadgeIcon className="w-3 h-3 shrink-0" />
-                          <span className="capitalize">{badgeLabel}</span>
-                        </span>
-                        {place.rating && (
-                          <span className="text-[11px] font-bold text-[#d97706] flex items-center gap-0.5 shrink-0">
-                            <Star className="w-3 h-3 fill-[#d97706]" />
-                            {place.rating}
-                          </span>
-                        )}
-                      </div>
-
-                      <h4 className="text-xs font-bold text-[#1a1a1a] leading-tight">{place.name}</h4>
-
-                      {place.address && (
-                        <p className="text-[10.5px] text-[#6b7280] mt-1 line-clamp-1">📍 {place.address}</p>
-                      )}
-
-                      <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-gray-100 text-[10px]">
-                        <span className="text-[#6b7280]">
-                          {isCafe ? "☕ Hot brews & snacks" : isRestro ? "🍽️ Dining & cuisine" : "Attraction"}
-                        </span>
-                        {place.userRatingCount ? (
-                          <span className="text-[#9ca3af]">{place.userRatingCount.toLocaleString()} reviews</span>
-                        ) : null}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
+              {/* Radius selector */}
+              <div className="flex items-center gap-1 text-[11px]">
+                <span className="text-gray-500 font-medium shrink-0">Radius:</span>
+                {[
+                  { label: "2 km", val: 2000 },
+                  { label: "5 km", val: 5000 },
+                  { label: "10 km", val: 10000 },
+                  { label: "25 km", val: 25000 },
+                ].map((r) => (
+                  <button
+                    key={r.val}
+                    onClick={() => setHotelRadius(r.val)}
+                    className={`px-2 py-0.5 rounded-md font-semibold transition-all ${
+                      hotelRadius === r.val
+                        ? "bg-[#2563eb] text-white shadow-2xs"
+                        : "bg-white text-gray-600 border border-blue-200/70 hover:bg-blue-100/50"
+                    }`}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+              </div>
             </div>
-          )}
 
-          {/* TAB 3: HOTELS */}
-          {activeTab === "hotels" && (
-            <div className="space-y-3">
-              {/* Location & Search Controls Header */}
-              <div className="p-3 bg-blue-50/60 rounded-xl border border-blue-200/60 space-y-2.5">
-                <div className="flex items-center justify-between gap-1">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <Hotel className="w-3.5 h-3.5 text-[#2563eb] shrink-0" />
-                    <span className="text-xs font-bold text-[#1e40af] truncate">
-                      Hotels near {searchAnchor?.name || destinationName || "Destination"}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button
-                      onClick={handleSearchCurrentMapView}
-                      disabled={loadingHotels}
-                      className="text-[11px] text-[#1e40af] hover:text-[#1e3a8a] font-semibold flex items-center gap-1 bg-white px-2 py-0.5 rounded-lg border border-blue-200 shadow-2xs hover:bg-blue-50/50 transition-all cursor-pointer"
-                      title="Search around current map view center"
-                    >
-                      <Crosshair className="w-3 h-3 text-[#2563eb]" />
-                      Map Area
-                    </button>
-                    <button
-                      onClick={() => handleSearchHotels()}
-                      disabled={loadingHotels}
-                      className="text-[11px] text-[#1e40af] hover:text-[#1e3a8a] font-semibold flex items-center gap-1 bg-white px-2 py-0.5 rounded-lg border border-blue-200 shadow-2xs hover:bg-blue-50/50 transition-all cursor-pointer"
-                      title="Refresh verified hotels"
-                    >
-                      <RefreshCw className={`w-3 h-3 ${loadingHotels ? "animate-spin text-[#2563eb]" : ""}`} />
-                      Refresh
-                    </button>
-                  </div>
-                </div>
-
-                {/* Radius selector */}
-                <div className="flex items-center gap-1 text-[11px]">
-                  <span className="text-gray-500 font-medium shrink-0">Radius:</span>
-                  {[
-                    { label: "2 km", val: 2000 },
-                    { label: "5 km", val: 5000 },
-                    { label: "10 km", val: 10000 },
-                    { label: "25 km", val: 25000 },
-                  ].map((r) => (
-                    <button
-                      key={r.val}
-                      onClick={() => setHotelRadius(r.val)}
-                      className={`px-2 py-0.5 rounded-md font-semibold transition-all ${
-                        hotelRadius === r.val
-                          ? "bg-[#2563eb] text-white shadow-2xs"
-                          : "bg-white text-gray-600 border border-blue-200/70 hover:bg-blue-100/50"
-                      }`}
-                    >
-                      {r.label}
-                    </button>
-                  ))}
-                </div>
+            {loadingHotels ? (
+              <div className="text-center py-10 text-xs text-[#6b7280]">
+                <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-[#2563eb]" />
+                Searching real hotels via Google Places...
               </div>
+            ) : hotels.length === 0 ? (
+              <div className="text-center py-8 text-xs text-[#9ca3af]">
+                No hotels found within {hotelRadius / 1000}km. Try expanding the search radius or clicking "Map Area".
+              </div>
+            ) : (
+              hotels.map((hotel) => {
+                const rawHotelPhoto = (hotel.photos && hotel.photos.length > 0)
+                  ? (typeof hotel.photos[0] === "string" ? hotel.photos[0] : (hotel.photos[0] as any).name)
+                  : null;
+                const hotelImg = rawHotelPhoto
+                  ? toPhotoProxyUrl(rawHotelPhoto)
+                  : "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80";
 
-              {loadingHotels ? (
-                <div className="text-center py-10 text-xs text-[#6b7280]">
-                  <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-[#2563eb]" />
-                  Searching real hotels via Google Places...
-                </div>
-              ) : hotels.length === 0 ? (
-                <div className="text-center py-8 text-xs text-[#9ca3af]">
-                  No hotels found within {hotelRadius / 1000}km. Try expanding the search radius or clicking "Map Area".
-                </div>
-              ) : (
-                hotels.map((hotel) => (
+                return (
                   <div
                     key={hotel.placeId}
                     onClick={() => {
@@ -2021,28 +2992,75 @@ export function ItineraryMapPanel({ initialPlan }: ItineraryMapPanelProps) {
                         mapInstanceRef.current.setZoom(16);
                       }
                     }}
-                    className="p-3 rounded-xl border border-[#e5e7db] bg-white hover:border-[#2563eb]/40 hover:shadow-xs cursor-pointer transition-all"
+                    className="group p-3 rounded-2xl border border-[#e5e7db] bg-white hover:border-[#2563eb]/50 hover:shadow-md cursor-pointer transition-all duration-200"
                   >
-                    <div className="flex items-start justify-between gap-1">
-                      <h4 className="text-xs font-bold text-[#1a1a1a] leading-tight">{hotel.name}</h4>
-                      {hotel.rating && (
-                        <span className="text-[11px] font-bold text-[#d97706] flex items-center gap-0.5 shrink-0">
-                          <Star className="w-3 h-3 fill-[#d97706]" />
-                          {hotel.rating}
-                        </span>
-                      )}
-                    </div>
-                    {hotel.address && (
-                      <p className="text-[10.5px] text-[#6b7280] mt-1 line-clamp-1">📍 {hotel.address}</p>
-                    )}
-                    <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-gray-100 text-[10px]">
-                      <span className="text-[#2563eb] font-medium">🏨 Lodging</span>
-                      {hotel.userRatingCount && (
-                        <span className="text-[#9ca3af]">{hotel.userRatingCount} reviews</span>
-                      )}
+                    <div className="flex items-start gap-3">
+                      {/* Left Thumbnail */}
+                      <div className="relative w-24 h-24 rounded-xl overflow-hidden shrink-0 bg-gray-100 shadow-inner">
+                        <img
+                          src={hotelImg}
+                          alt={hotel.name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).src =
+                              "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80";
+                          }}
+                        />
+                        {hotel.rating ? (
+                          <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-white/95 backdrop-blur-xs text-[10px] font-bold text-[#d97706] shadow-xs">
+                            <Star className="w-2.5 h-2.5 fill-[#d97706]" />
+                            <span>{hotel.rating}</span>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      {/* Right Info */}
+                      <div className="flex-1 min-w-0 flex flex-col justify-between self-stretch py-0.5">
+                        <div>
+                          <div className="flex items-center justify-between gap-1 mb-1">
+                            <span className="inline-flex items-center gap-1 text-[9.5px] px-2 py-0.5 rounded-full border bg-blue-50 text-blue-800 border-blue-200 font-semibold">
+                              <Hotel className="w-2.5 h-2.5 shrink-0" />
+                              <span>Verified Stay</span>
+                            </span>
+                            <span className="text-[10px] text-[#2563eb] font-semibold flex items-center gap-0.5">
+                              <MapPin className="w-2.5 h-2.5" />
+                              Pin
+                            </span>
+                          </div>
+
+                          <h4 className="text-xs font-bold text-[#1a1a1a] leading-tight line-clamp-2 group-hover:text-[#2563eb] transition-colors">
+                            {hotel.name}
+                          </h4>
+
+                          {hotel.address && (
+                            <p className="text-[10px] text-[#6b7280] mt-1 line-clamp-1">📍 {hotel.address}</p>
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-gray-100 text-[10px]">
+                          <span className="text-[#2563eb] font-medium">🏨 Lodging & Stays</span>
+                          <div className="flex items-center gap-2">
+                            {hotel.userRatingCount ? (
+                              <span className="text-[#9ca3af] hidden sm:inline">{hotel.userRatingCount.toLocaleString()} reviews</span>
+                            ) : null}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openDetailsForPlace(hotel, "hotel");
+                              }}
+                              className="px-2 py-0.5 rounded-md bg-[#2563eb] hover:bg-[#1d4ed8] text-white text-[10px] font-semibold flex items-center gap-0.5 cursor-pointer shadow-2xs transition-all"
+                            >
+                              <span>Details</span>
+                              <ChevronRight className="w-2.5 h-2.5" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                ))
+                );
+              })
               )}
             </div>
           )}
@@ -2106,6 +3124,20 @@ export function ItineraryMapPanel({ initialPlan }: ItineraryMapPanelProps) {
           </div>
         </div>
       </div>
+
+      {/* Detailed Stop Modal Dialog */}
+      {detailModalStop && (
+        <StopDetailModal
+          stop={detailModalStop}
+          onClose={() => setDetailModalStop(null)}
+          onViewOnMap={(target) => {
+            const idx = stops.findIndex((s) => s.id === target.id);
+            handleFocusStop(target, idx >= 0 ? idx : 0);
+          }}
+          isSaved={savedStops.includes(detailModalStop.id)}
+          onToggleSave={toggleSaveStop}
+        />
+      )}
     </div>
   );
 }

@@ -155,7 +155,7 @@ export function generateVerificationEmailHtml({
     <div class="container">
       <div class="logo-container">
         <h1 class="brand-title">Roamly</h1>
-        <p class="brand-subtitle">Local Guides & Authentic Journeys</p>
+        <p class="brand-subtitle">Travel Smarter Together</p>
       </div>
 
       <h2 class="heading">${greeting}</h2>

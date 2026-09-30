@@ -68,8 +68,8 @@ export async function GET(req: Request) {
         // Show clear message and offer "Register as a Guide" without altering role
         targetUrl = new URL("/choose-role?notice=traveler_account", req.url);
       } else {
-        // Standard traveler login flow
-        targetUrl = new URL("/landing_page", req.url);
+        // Standard traveler login flow — always open AI Trip planner (/llm)
+        targetUrl = new URL("/llm", req.url);
       }
     }
 
@@ -79,7 +79,7 @@ export async function GET(req: Request) {
     return response;
   } catch (err) {
     console.error("auth-redirect error:", err);
-    // Redirect to landing_page instead of '/' to prevent sign-in loop if DB is offline
-    return NextResponse.redirect(new URL("/landing_page", req.url));
+    // Redirect to AI Trip planner (/llm) instead of landing page
+    return NextResponse.redirect(new URL("/llm", req.url));
   }
 }

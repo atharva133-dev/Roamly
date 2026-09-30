@@ -3,6 +3,7 @@
 import React, { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { useUser } from "@clerk/nextjs";
 import {
   Compass,
@@ -61,6 +62,13 @@ function ChooseRoleContent() {
                 router.replace("/admin-guides");
                 return;
               }
+
+              // If logged-in USER (Traveler): redirect to AI Trip planner (/llm) automatically
+              if (data.user.role === "USER") {
+                setIsRedirecting(true);
+                router.replace("/llm");
+                return;
+              }
             }
           }
         } catch (err) {
@@ -96,8 +104,8 @@ function ChooseRoleContent() {
         setIsRedirecting(false);
         return;
       } else {
-        // Continue to normal traveler experience
-        router.push("/landing_page");
+        // Continue to normal traveler experience — always open AI Trip planner (/llm)
+        router.push("/llm");
         return;
       }
     }
@@ -122,13 +130,15 @@ function ChooseRoleContent() {
     <div className="min-h-screen bg-gradient-to-br from-[#FAFBF8] via-[#f7f8f4] to-[#eef3e6] flex flex-col justify-between selection:bg-[#DFECC6] selection:text-[#38480e]">
       {/* ─── Top Brand Header ─── */}
       <header className="w-full max-w-5xl mx-auto px-6 py-6 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2.5 group">
-          <span className="inline-flex size-10 items-center justify-center rounded-2xl bg-[#3f520f] text-white shadow-sm transition-transform duration-200 group-hover:scale-105">
-            <Plane className="size-5 -rotate-45" />
-          </span>
-          <span className="text-2xl font-bold tracking-tight text-[#1a1a1a]">
-            Roamly
-          </span>
+        <Link href="/" className="flex items-center gap-2 group">
+          <Image
+            src="/logo.png"
+            alt="Roamly - Travel Smarter Together"
+            width={160}
+            height={50}
+            className="h-10 sm:h-11 w-auto object-contain transition-transform duration-200 group-hover:scale-105"
+            priority
+          />
         </Link>
 
         <Link
@@ -179,10 +189,10 @@ function ChooseRoleContent() {
                 <ArrowRight className="size-3" />
               </Link>
               <Link
-                href="/landing_page"
+                href="/llm"
                 className="inline-flex items-center px-3.5 py-2 rounded-full text-xs font-medium bg-white hover:bg-amber-100/60 border border-amber-300 text-amber-900 transition-all"
               >
-                Continue as Traveler
+                Continue to AI Planner
               </Link>
             </div>
           </div>

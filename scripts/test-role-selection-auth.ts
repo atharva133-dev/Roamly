@@ -5,7 +5,7 @@
  * TEST 1:  Visitor opens login page -> Traveler + Guide choices visible
  * TEST 2:  Visitor chooses Traveler -> Clerk sign-in URL with traveler intent
  * TEST 3:  Visitor chooses Guide -> Clerk sign-in URL with guide intent
- * TEST 4:  Existing USER logs in through Traveler -> /landing_page
+ * TEST 4:  Existing USER logs in through Traveler -> /llm
  * TEST 5:  Existing GUIDE logs in through Traveler -> /guide-dashboard (cannot override DB role)
  * TEST 6:  Existing GUIDE logs in through Guide -> /guide-dashboard
  * TEST 7:  Existing USER chooses Guide -> /choose-role?notice=traveler_account (role NOT converted)
@@ -55,7 +55,7 @@ function resolveAuthRedirect(userRole: UserRole, intent?: string | null): string
     if (intent === "guide") {
       return "/choose-role?notice=traveler_account";
     } else {
-      return "/landing_page";
+      return "/llm";
     }
   }
 }
@@ -175,14 +175,14 @@ async function runTestSuite() {
     });
 
     // ─────────────────────────────────────────────────────────────
-    // TEST 4: Existing USER logs in through Traveler -> /landing_page
+    // TEST 4: Existing USER logs in through Traveler -> /llm
     // ─────────────────────────────────────────────────────────────
     const userTravelerDestination = resolveAuthRedirect(testUser.role, "traveler");
     recordResult(
       "TEST 4",
       "Existing USER logs in through Traveler",
-      "normal traveler experience (/landing_page)",
-      userTravelerDestination === "/landing_page",
+      "normal traveler experience (/llm)",
+      userTravelerDestination === "/llm",
       `Redirect target: ${userTravelerDestination}`
     );
 

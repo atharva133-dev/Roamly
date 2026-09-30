@@ -3,6 +3,7 @@
 import React, { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import {
   CheckCircle2,
   XCircle,
@@ -121,10 +122,16 @@ function VerifyGuideContent() {
         <div className="absolute -top-16 -right-16 w-36 h-36 bg-[#DFECC6]/40 rounded-full blur-2xl pointer-events-none" />
         <div className="absolute -bottom-16 -left-16 w-36 h-36 bg-[#485C11]/10 rounded-full blur-2xl pointer-events-none" />
 
-        {/* Top Brand Tag */}
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#f4f7ee] border border-[#d6dacb] text-[#485C11] text-xs font-semibold uppercase tracking-wider mb-6">
-          <Sparkles className="w-3.5 h-3.5" />
-          Roamly Guide Network
+        {/* Official Roamly Logo */}
+        <div className="flex justify-center mb-6">
+          <Image
+            src="/logo.png"
+            alt="Roamly - Travel Smarter Together"
+            width={140}
+            height={44}
+            className="h-9 w-auto object-contain"
+            priority
+          />
         </div>
 
         {/* Loading State */}

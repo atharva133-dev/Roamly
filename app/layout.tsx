@@ -21,6 +21,11 @@ const robotoMono = Roboto_Mono({
 export const metadata: Metadata = {
   title: "Roamly - AI Travel Planner",
   description: "Your intelligent companion for seamless, AI-driven travel planning",
+  icons: {
+    icon: "/icon.png",
+    shortcut: "/icon.png",
+    apple: "/logo-icon.png",
+  },
 };
 
 export default function RootLayout({

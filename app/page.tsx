@@ -1097,10 +1097,18 @@ export default function HomePage() {
       {/* ---------------------------------------------------------------------- */}
       <footer className="border-t border-[#e5e7db] bg-white py-12 text-xs text-[#6b7280]">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-base text-[#1a1a1a]">Roamly</span>
-            <span>•</span>
-            <span>AI Travel Itinerary Platform</span>
+          <div className="flex items-center gap-3">
+            <Link href="/" className="flex items-center gap-2 group">
+              <Image
+                src="/logo.png"
+                alt="Roamly - Travel Smarter Together"
+                width={120}
+                height={36}
+                className="h-8 w-auto object-contain transition-opacity hover:opacity-90"
+              />
+            </Link>
+            <span className="hidden sm:inline text-gray-300">•</span>
+            <span className="hidden sm:inline">AI Travel Itinerary Platform</span>
           </div>
 
           <div className="flex flex-wrap items-center gap-6 text-[#6b7280]">

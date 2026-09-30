@@ -11,8 +11,8 @@
 
 import { searchAttractions } from "../services/googleMapsGateway.js";
 
-const MAX_CANDIDATES_PER_DESTINATION = 12;
-const MAX_CANDIDATES_PER_QUERY = 8;
+const MAX_CANDIDATES_PER_DESTINATION = 40;
+const MAX_CANDIDATES_PER_QUERY = 15;
 
 function rankCandidates(candidates) {
   return [...candidates].sort((a, b) => {
@@ -38,18 +38,33 @@ function normalizeCandidate(raw) {
 }
 
 async function findCandidatesForDestination(location, interests) {
-  const queries =
-    Array.isArray(interests) && interests.length > 0
-      ? interests.map((interest) => `${interest} attractions in ${location.name}`)
-      : [`top attractions in ${location.name}`];
+  const querySet = new Set();
+
+  // Multi-angle foundational queries for broad destination coverage
+  querySet.add(`top tourist attractions and famous landmarks in ${location.name}`);
+  querySet.add(`historic forts, monuments and heritage sites in ${location.name}`);
+  querySet.add(`popular museums, cultural spots and art galleries in ${location.name}`);
+  querySet.add(`scenic gardens, parks and viewpoints in ${location.name}`);
+  querySet.add(`vibrant local markets, bazaars and shopping streets in ${location.name}`);
+
+  // User-provided interests
+  if (Array.isArray(interests) && interests.length > 0) {
+    for (const interest of interests) {
+      if (interest && typeof interest === "string") {
+        querySet.add(`${interest} attractions in ${location.name}`);
+      }
+    }
+  }
 
   const seen = new Map();
 
-  for (const query of queries) {
+  for (const query of querySet) {
+    if (seen.size >= MAX_CANDIDATES_PER_DESTINATION) break;
     const results = await searchAttractions(query);
     for (const raw of (results || []).slice(0, MAX_CANDIDATES_PER_QUERY)) {
       if (!raw?.placeId || seen.has(raw.placeId)) continue;
       seen.set(raw.placeId, normalizeCandidate(raw));
+      if (seen.size >= MAX_CANDIDATES_PER_DESTINATION) break;
     }
   }
 

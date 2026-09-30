@@ -19,6 +19,8 @@ import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { MultiSelectInterests } from "@/components/ui/multi-select-interests";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useUser } from "@clerk/nextjs";
 
 // react-day-picker touches window/document during measurement — load client-only,
 // matching the pattern already used in app/mapcalendar/page.tsx.
@@ -56,8 +58,33 @@ import {
   ShieldAlert,
   User,
   Languages,
-  Award
+  Award,
+  Lock,
+  PhoneCall,
+  Luggage,
+  Copy,
+  Shield,
+  ExternalLink,
+  CheckSquare,
+  Square,
+  Sun,
+  Sunrise,
+  Moon,
+  Utensils,
+  Layers,
+  Plus,
+  Trash2,
+  CreditCard,
+  Landmark,
+  Bus,
+  Zap,
 } from "lucide-react";
+import {
+  buildDestinationTips,
+  buildEmergencyContacts,
+  buildPackingList,
+  resolveDestinationProfile,
+} from "@/lib/destination-insights";
 
 interface TravelDetails {
   destinations: string[];
@@ -107,6 +134,14 @@ interface TravelPlan {
     local_emergency: string;
     embassy: string;
     hotel: string;
+    police?: string;
+    ambulance?: string;
+    tourist_helpline?: string;
+    women_helpline?: string;
+    roamly_support?: string;
+    country_code?: string;
+    quick_dial?: string;
+    advisory?: string;
   };
 }
 
@@ -180,8 +215,23 @@ interface ItineraryPlanSuccess {
     budgetPerPersonPerDay: number;
   };
   budgetBreakdown: Record<string, number>;
-  destinations: Array<{ locationId: string; name: string; city: string }>;
+  destinations: Array<{ locationId?: string; name: string; city: string }>;
   days: AgentDay[];
+  travel_tips?: string[];
+  packing_list?: string[];
+  emergency_contacts?: {
+    local_emergency: string;
+    embassy: string;
+    hotel: string;
+    police?: string;
+    ambulance?: string;
+    tourist_helpline?: string;
+    women_helpline?: string;
+    roamly_support?: string;
+    country_code?: string;
+    quick_dial?: string;
+    advisory?: string;
+  };
   sources: Record<string, string | null>;
   routerTrace: {
     agentsExecuted: string[];
@@ -291,9 +341,20 @@ function weatherEmoji(description: string): string {
  */
 function adaptAgentResponseToTravelPlan(result: ItineraryPlanSuccess): TravelPlan {
   const itinerary: ItineraryDay[] = result.days.map((day) => {
-    const bySlot = (slot: string) => {
-      const activity = day.activities.find((a) => a.slot === slot);
-      if (!activity) return "Free time";
+    const bySlot = (slot: string, fallbackIdx: number) => {
+      let activity = day.activities.find((a) => a.slot?.toLowerCase() === slot.toLowerCase());
+      if (!activity && day.activities[fallbackIdx]) {
+        activity = day.activities[fallbackIdx];
+      }
+      if (!activity) {
+        const timeRanges: Record<string, string> = {
+          morning: "09:00–11:30",
+          afternoon: "13:00–16:00",
+          evening: "17:00–19:30"
+        };
+        const tr = timeRanges[slot.toLowerCase()] || "10:00–13:00";
+        return `${day.city} Cultural Discovery & Scenic Exploration (${tr}): Stroll through historic neighborhoods, vibrant local markets, and scenic viewpoints in ${day.city}.`;
+      }
       const desc = activity.description ? `: ${activity.description}` : "";
       return `${activity.name} (${activity.startTime}–${activity.endTime})${desc}`;
     };
@@ -311,11 +372,11 @@ function adaptAgentResponseToTravelPlan(result: ItineraryPlanSuccess): TravelPla
       city: day.city,
       theme: day.theme,
       description: day.description,
-      morning: bySlot("morning"),
-      afternoon: bySlot("afternoon"),
-      evening: bySlot("evening"),
-      accommodation: day.accommodation || `Hotel / Stay near ${day.city}`,
-      meals: day.meals || `Local culinary specialties in ${day.city}`,
+      morning: bySlot("morning", 0),
+      afternoon: bySlot("afternoon", 1),
+      evening: bySlot("evening", 2),
+      accommodation: day.accommodation || `Hotel / Stay near central ${day.city}`,
+      meals: day.meals || `Sample authentic regional specialties and street culinary delights in ${day.city}`,
       estimated_cost: `₹${day.dayEstimatedCost.toLocaleString("en-IN")}`,
       guide: day.guide || null,
       weather: day.weather.available
@@ -329,23 +390,73 @@ function adaptAgentResponseToTravelPlan(result: ItineraryPlanSuccess): TravelPla
     };
   });
 
-  const travel_tips = [
-    ...result.days
-      .filter((d) => d.transit && d.transit.preferenceSatisfied === false)
-      .map((d) => `Travel from ${d.transit!.fromLocationId === d.locationId ? d.city : "the previous stop"} to ${d.city} may not fully match your preferred transport mode.`),
-    ...(result.warnings || []).map((w) => w.details),
-  ];
+  const rawTips = result.travel_tips || (result as any).plan?.travel_tips;
+  const transitWarnings = result.days
+    .filter((d) => d.transit && d.transit.preferenceSatisfied === false)
+    .map((d) => `Transit notice: Travel to ${d.city} utilizes the best available verified connection.`);
+
+  const destProfile = resolveDestinationProfile(result.destinations);
+  const isIndia = destProfile.country === "India";
+
+  let travel_tips: string[] = [];
+  if (Array.isArray(rawTips) && rawTips.length > 0) {
+    const hasFalseIndiaInfo = !isIndia && rawTips.some((t: string) =>
+      /\b(UPI|PhonePe|Paytm|auto-rickshaw|rickshaws|Aadhaar|temple shoe)\b/i.test(t)
+    );
+    travel_tips = hasFalseIndiaInfo ? buildDestinationTips(result.destinations) : rawTips;
+  } else {
+    travel_tips = buildDestinationTips(result.destinations);
+  }
+  if (transitWarnings.length > 0) {
+    travel_tips = [...travel_tips, ...transitWarnings];
+  }
+
+  const rawPacking = result.packing_list || (result as any).plan?.packing_list;
+  let packing_list: string[] = [];
+  if (Array.isArray(rawPacking) && rawPacking.length > 0) {
+    const hasFalseIndiaPacking = !isIndia && rawPacking.some((p: string) =>
+      /\b(Aadhaar|temple shoe)\b/i.test(p)
+    );
+    packing_list = hasFalseIndiaPacking ? buildPackingList(result.destinations) : rawPacking;
+  } else {
+    packing_list = buildPackingList(result.destinations);
+  }
+
+  const rawEmergency = result.emergency_contacts || (result as any).plan?.emergency_contacts;
+  const verifiedEmergency = buildEmergencyContacts(result.destinations);
+
+  let emergency_contacts: TravelPlan["emergency_contacts"] = {
+    local_emergency: rawEmergency?.local_emergency || verifiedEmergency.local_emergency,
+    police: rawEmergency?.police || verifiedEmergency.police,
+    ambulance: rawEmergency?.ambulance || verifiedEmergency.ambulance,
+    tourist_helpline: rawEmergency?.tourist_helpline || verifiedEmergency.tourist_helpline,
+    women_helpline: rawEmergency?.women_helpline || verifiedEmergency.women_helpline || "Local Safety Line",
+    embassy: rawEmergency?.embassy || verifiedEmergency.embassy,
+    hotel: rawEmergency?.hotel || verifiedEmergency.hotel,
+    roamly_support: rawEmergency?.roamly_support || verifiedEmergency.roamly_support,
+    country_code: verifiedEmergency.country_code,
+    quick_dial: verifiedEmergency.quick_dial,
+    advisory: verifiedEmergency.advisory
+  };
+
+  // If destination is outside India but emergency contacts carry Indian 108/1363, sanitize to true local numbers
+  if (!isIndia) {
+    const rawLocal = String(emergency_contacts.local_emergency || "");
+    const rawAmb = String(emergency_contacts.ambulance || "");
+    if (rawAmb.includes("108") || rawLocal.includes("100") || (destProfile.country === "USA" && !rawLocal.includes("911"))) {
+      emergency_contacts = {
+        ...verifiedEmergency,
+        women_helpline: verifiedEmergency.women_helpline || "Local Safety Line",
+      };
+    }
+  }
 
   return {
     itinerary,
     total_estimated_cost: `₹${result.tripSummary.estimatedTotalCost.toLocaleString("en-IN")}`,
-    travel_tips: travel_tips.length > 0 ? travel_tips : ["All grounded data checks passed — have a great trip!"],
-    packing_list: ["Comfortable walking shoes", "Weather-appropriate clothing", "Phone charger & power bank", "Government ID / passport copies"],
-    emergency_contacts: {
-      local_emergency: "112",
-      embassy: "Contact your respective embassy/consulate",
-      hotel: "Hotel/accommodation front desk",
-    },
+    travel_tips,
+    packing_list,
+    emergency_contacts,
   };
 }
 
@@ -359,6 +470,30 @@ export interface DestinationItem {
 }
 
 export default function LLMPage() {
+  const router = useRouter();
+  const { isLoaded, isSignedIn } = useUser();
+
+  const handleRequireLogin = (e?: React.SyntheticEvent) => {
+    if (!isLoaded) {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      return;
+    }
+    if (!isSignedIn) {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const target = e.target as HTMLElement | null;
+        if (target && typeof target.blur === "function") {
+          target.blur();
+        }
+      }
+      router.push(`/sign-in?redirect_url=${encodeURIComponent("/auth-redirect")}`);
+    }
+  };
+
   const [loading, setLoading] = useState(false);
   const [plan, setPlan] = useState<TravelPlan | null>(null);
   const [summary, setSummary] = useState("");
@@ -392,6 +527,53 @@ export default function LLMPage() {
   const [guidePreference, setGuidePreference] = useState<"NO_GUIDE" | "NEED_GUIDE" | "CHOOSE_GUIDE">("NO_GUIDE");
   const [agentResult, setAgentResult] = useState<ItineraryPlanSuccess | null>(null);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [packedItems, setPackedItems] = useState<Record<number, boolean>>({});
+  const [copiedContact, setCopiedContact] = useState<string | null>(null);
+  const [customPackingItems, setCustomPackingItems] = useState<string[]>([]);
+  const [newPackingInput, setNewPackingInput] = useState("");
+  const [packingCategory, setPackingCategory] = useState<string>("all");
+
+  const togglePacked = (idx: number) => {
+    setPackedItems((prev) => ({ ...prev, [idx]: !prev[idx] }));
+  };
+
+  const handlePackAll = () => {
+    const allItems = [...(plan?.packing_list || []), ...customPackingItems];
+    const next: Record<number, boolean> = {};
+    allItems.forEach((_, idx) => {
+      next[idx] = true;
+    });
+    setPackedItems(next);
+  };
+
+  const handleResetPacked = () => {
+    setPackedItems({});
+  };
+
+  const handleAddCustomPackingItem = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const clean = newPackingInput.trim();
+    if (!clean) return;
+    setCustomPackingItems((prev) => [...prev, clean]);
+    setNewPackingInput("");
+  };
+
+  const handleRemoveCustomPackingItem = (itemToRemove: string, itemIdx: number) => {
+    setCustomPackingItems((prev) => prev.filter((item) => item !== itemToRemove));
+    setPackedItems((prev) => {
+      const next = { ...prev };
+      delete next[itemIdx];
+      return next;
+    });
+  };
+
+  const copyToClipboard = (label: string, text: string) => {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(text);
+      setCopiedContact(label);
+      setTimeout(() => setCopiedContact(null), 2000);
+    }
+  };
 
   // Guide selection state (for CHOOSE_GUIDE mode)
   interface AvailableGuide {
@@ -425,6 +607,31 @@ export default function LLMPage() {
   const [hasSingleGuideCoveringAll, setHasSingleGuideCoveringAll] = useState(false);
   const [isGuideUser, setIsGuideUser] = useState(false);
 
+  // State for interactive expandable day cards. Default: Day 1 (index 0) is open.
+  const [expandedDays, setExpandedDays] = useState<Set<number>>(new Set([0]));
+
+  const toggleDayExpansion = (idx: number) => {
+    setExpandedDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) {
+        next.delete(idx);
+      } else {
+        next.add(idx);
+      }
+      return next;
+    });
+  };
+
+  const expandAllDays = () => {
+    if (plan?.itinerary) {
+      setExpandedDays(new Set(plan.itinerary.map((_, i) => i)));
+    }
+  };
+
+  const collapseAllDays = () => {
+    setExpandedDays(new Set());
+  };
+
   const derivedBudget = deriveBudgetCategory(customBudget);
   const searchTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
@@ -439,6 +646,11 @@ export default function LLMPage() {
     range: DateRange | undefined,
     triggerDate?: Date
   ) => {
+    if (isLoaded && !isSignedIn) {
+      handleRequireLogin();
+      return;
+    }
+
     const clickedDate = triggerDate || range?.to || range?.from;
     if (!clickedDate) {
       setStartDate("");
@@ -467,6 +679,11 @@ export default function LLMPage() {
   };
 
   const handleDurationPreset = (days: number) => {
+    if (isLoaded && !isSignedIn) {
+      handleRequireLogin();
+      return;
+    }
+
     const base = startDate ? parseISO(startDate) : new Date();
     const formattedStart = format(base, "yyyy-MM-dd");
     const formattedEnd = format(addDays(base, Math.max(0, days - 1)), "yyyy-MM-dd");
@@ -475,6 +692,18 @@ export default function LLMPage() {
   };
 
   const addDestination = (item: DestinationItem) => {
+    // Prevent duplicate additions
+    const alreadyExists = selectedDestinations.some(
+      (d) =>
+        (item.locationId && d.locationId === item.locationId) ||
+        (item.googlePlaceId && d.googlePlaceId === item.googlePlaceId) ||
+        (item.name && d.name.trim().toLowerCase() === item.name.trim().toLowerCase())
+    );
+    if (alreadyExists) {
+      setSearchQuery("");
+      setShowSuggestions(false);
+      return;
+    }
     const updated = [...selectedDestinations, item];
     setSelectedDestinations(updated);
     setCitiesText(updated.map((d) => d.name).join(", "));
@@ -487,6 +716,25 @@ export default function LLMPage() {
     setSelectedDestinations(updated);
     setCitiesText(updated.map((d) => d.name).join(", "));
   };
+
+  // Sync destination entered in AI planner to localStorage so Stays page extracts it
+  useEffect(() => {
+    try {
+      if (selectedDestinations.length > 0) {
+        const destNames = selectedDestinations.map((d) => d.name);
+        localStorage.setItem("roamly_planner_destinations", JSON.stringify(destNames));
+        localStorage.setItem("roamly_current_destination", destNames[destNames.length - 1]);
+      } else if (citiesText.trim()) {
+        const destNames = citiesText.split(",").map((s) => s.trim()).filter(Boolean);
+        if (destNames.length > 0) {
+          localStorage.setItem("roamly_planner_destinations", JSON.stringify(destNames));
+          localStorage.setItem("roamly_current_destination", destNames[0]);
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to persist destination for stays:", e);
+    }
+  }, [selectedDestinations, citiesText]);
 
   const handleSearchInputChange = (val: string) => {
     setSearchQuery(val);
@@ -516,6 +764,11 @@ export default function LLMPage() {
   };
 
   const handleSelectSuggestion = async (sug: { placeId: string; name: string; mainText: string; secondaryText?: string }) => {
+    if (isLoaded && !isSignedIn) {
+      handleRequireLogin();
+      return;
+    }
+
     try {
       setIsSearching(true);
       const res = await fetch("/api/locations/geocode", {
@@ -551,6 +804,11 @@ export default function LLMPage() {
   };
 
   const handleSearchInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (isLoaded && !isSignedIn) {
+      handleRequireLogin(e);
+      return;
+    }
+
     if (e.key === "Enter" && searchQuery.trim()) {
       e.preventDefault();
       if (suggestions.length > 0) {
@@ -584,6 +842,11 @@ export default function LLMPage() {
   };
 
   const handleUseCurrentLocation = () => {
+    if (isLoaded && !isSignedIn) {
+      handleRequireLogin();
+      return;
+    }
+
     setLocatingCurrent(true);
     setLocationMessage(null);
 
@@ -778,6 +1041,11 @@ export default function LLMPage() {
   }, [selectedDestinations, citiesText, guidePreference]);
 
   const generatePlan = async () => {
+    if (isLoaded && !isSignedIn) {
+      handleRequireLogin();
+      return;
+    }
+
     setLoading(true);
     setError("");
     setPlan(null);
@@ -855,11 +1123,21 @@ export default function LLMPage() {
 
       setAgentResult(data);
       setPlan(adaptAgentResponseToTravelPlan(data));
+      setExpandedDays(new Set([0]));
       setSummary(
         data.summary ||
           `Grounded ${data.tripSummary.durationDays}-day trip to ${data.destinations.map((d) => d.name).join(", ")} for ${data.tripSummary.travelerCount} traveler(s). Validation: ${data.routerTrace.validationStatus}.`
       );
       setDecisionStatus("pending");
+      setJobStatus("completed");
+
+      // Smoothly auto-scroll to the generated itinerary and decision card
+      setTimeout(() => {
+        const el = document.getElementById("generated-itinerary-output");
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }, 150);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : "Failed to generate travel plan";
       setError(errorMessage);
@@ -870,6 +1148,11 @@ export default function LLMPage() {
   };
 
   const handleAcceptPlan = () => {
+    if (isLoaded && !isSignedIn) {
+      handleRequireLogin();
+      return;
+    }
+
     const numericBudget = Math.max(0, parseInt(customBudget.replace(/[^0-9]/g, ""), 10) || 0);
     const resolvedDests = selectedDestinations.length > 0
       ? selectedDestinations.map((d) => d.name)
@@ -919,6 +1202,10 @@ export default function LLMPage() {
   };
 
   const handleRegenerate = () => {
+    if (isLoaded && !isSignedIn) {
+      handleRequireLogin();
+      return;
+    }
     setDecisionStatus("pending");
     generatePlan();
   };
@@ -944,14 +1231,61 @@ export default function LLMPage() {
         </div>
 
         {/* Form */}
-        <Card id="travel-form-card" className="mb-8 border-[#e5e7db] shadow-sm">
+        <Card
+          id="travel-form-card"
+          className="mb-8 border-[#e5e7db] shadow-sm relative transition-all"
+          onClickCapture={handleRequireLogin}
+          onPointerDownCapture={handleRequireLogin}
+          onTouchStartCapture={handleRequireLogin}
+          onFocusCapture={handleRequireLogin}
+          onKeyDownCapture={handleRequireLogin}
+        >
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Plane className="h-6 w-6" />
-              Travel Details
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <Plane className="h-6 w-6" />
+                Travel Details
+              </CardTitle>
+              {isLoaded && !isSignedIn && (
+                <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300 flex items-center gap-1.5 py-1 px-2.5">
+                  <Lock className="w-3.5 h-3.5" />
+                  Sign In Required
+                </Badge>
+              )}
+            </div>
           </CardHeader>
           <CardContent className="space-y-6">
+            {/* Informational Banner when unauthenticated */}
+            {isLoaded && !isSignedIn && (
+              <div className="p-3.5 sm:p-4 rounded-xl bg-amber-50/90 border border-amber-200 text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+                <div className="flex items-start sm:items-center gap-3">
+                  <div className="p-2 bg-amber-100 rounded-lg text-amber-800 shrink-0">
+                    <Lock className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-amber-950">
+                      Sign in to use the AI Trip Planner
+                    </p>
+                    <p className="text-xs text-amber-800/90">
+                      Please log in to set destinations, dates, and create your personalized AI itinerary.
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="bg-[#485C11] hover:bg-[#364A0E] text-white shrink-0 cursor-pointer self-start sm:self-auto shadow-2xs"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    router.push(`/sign-in?redirect_url=${encodeURIComponent("/auth-redirect")}`);
+                  }}
+                >
+                  Sign In
+                </Button>
+              </div>
+            )}
+
             {/* Google-Backed Destinations & Current Location */}
             <div className="relative">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
@@ -1006,7 +1340,7 @@ export default function LLMPage() {
                 <div className="flex flex-wrap gap-2 mb-2.5">
                   {selectedDestinations.map((dest, idx) => (
                     <span
-                      key={dest.locationId || dest.googlePlaceId || `${dest.name}-${idx}`}
+                      key={`dest-chip-${dest.locationId || dest.googlePlaceId || dest.name || 'loc'}-${idx}`}
                       className="inline-flex items-center gap-1.5 bg-[#F4F6EE] border border-[#d6dacb] text-[#2f3d0c] text-xs font-medium px-3 py-1 rounded-full shadow-2xs"
                     >
                       <MapPin className="w-3 h-3 text-[#485C11]" />
@@ -1058,9 +1392,9 @@ export default function LLMPage() {
                       Google Places Suggestions
                     </div>
                   )}
-                  {suggestions.map((sug) => (
+                  {suggestions.map((sug, sIdx) => (
                     <button
-                      key={sug.placeId}
+                      key={`sug-${sug.placeId || sug.name || 'sug'}-${sIdx}`}
                       type="button"
                       onClick={() => handleSelectSuggestion(sug)}
                       className="w-full text-left px-3.5 py-2 hover:bg-[#F4F6EE] transition-colors flex items-start gap-2.5 cursor-pointer border-b border-gray-50 last:border-0"
@@ -1388,8 +1722,8 @@ export default function LLMPage() {
                 Connect with verified local guides tailored for your trip destinations.
               </p>
 
-              {/* Options: [ No, Continue Without Guide ] [ Yes, Find a Guide ] */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-2">
+              {/* Simple Yes / No toggle buttons */}
+              <div className="grid grid-cols-2 gap-3 mb-2">
                 <button
                   type="button"
                   onClick={() => {
@@ -1397,323 +1731,120 @@ export default function LLMPage() {
                     setSelectedGuide(null);
                     setAvailableGuides([]);
                   }}
-                  className={`flex items-center justify-between p-3.5 rounded-xl border-2 text-left transition-all ${
+                  className={`py-2.5 px-4 rounded-xl border-2 font-bold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer ${
                     guidePreference === "NO_GUIDE"
-                      ? "border-[#485C11] bg-[#485C11]/5 text-[#1a1a1a] shadow-xs ring-1 ring-[#485C11]/30"
-                      : "border-[#e5e7db] bg-white text-[#4a5043] hover:border-[#8E9C78]"
+                      ? "border-[#485C11] bg-[#485C11] text-white shadow-xs"
+                      : "border-gray-200 bg-white text-gray-700 hover:border-[#8E9C78] hover:bg-[#DFECC6]/20"
                   }`}
                 >
-                  <div className="flex items-center gap-2.5">
-                    <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                      guidePreference === "NO_GUIDE" ? "border-[#485C11] bg-[#485C11]" : "border-[#9ca3af]"
-                    }`}>
-                      {guidePreference === "NO_GUIDE" && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                    </div>
-                    <div>
-                      <span className="text-sm font-semibold block">No, Continue Without Guide</span>
-                      <span className="text-[11px] text-[#6b7280]">Self-guided trip planning</span>
-                    </div>
-                  </div>
+                  <X className="w-4 h-4" />
+                  No
                 </button>
 
                 <button
                   type="button"
                   onClick={() => {
-                    setGuidePreference("CHOOSE_GUIDE");
+                    setGuidePreference("NEED_GUIDE");
                     fetchGuidesForDestinations();
                   }}
-                  className={`flex items-center justify-between p-3.5 rounded-xl border-2 text-left transition-all ${
-                    guidePreference === "CHOOSE_GUIDE" || guidePreference === "NEED_GUIDE"
-                      ? "border-[#485C11] bg-[#485C11]/5 text-[#1a1a1a] shadow-xs ring-1 ring-[#485C11]/30"
-                      : "border-[#e5e7db] bg-white text-[#4a5043] hover:border-[#8E9C78]"
+                  className={`py-2.5 px-4 rounded-xl border-2 font-bold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                    guidePreference !== "NO_GUIDE"
+                      ? "border-[#485C11] bg-[#485C11] text-white shadow-xs"
+                      : "border-gray-200 bg-white text-gray-700 hover:border-[#8E9C78] hover:bg-[#DFECC6]/20"
                   }`}
                 >
-                  <div className="flex items-center gap-2.5">
-                    <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                      guidePreference === "CHOOSE_GUIDE" || guidePreference === "NEED_GUIDE"
-                        ? "border-[#485C11] bg-[#485C11]"
-                        : "border-[#9ca3af]"
-                    }`}>
-                      {(guidePreference === "CHOOSE_GUIDE" || guidePreference === "NEED_GUIDE") && (
-                        <div className="w-1.5 h-1.5 rounded-full bg-white" />
-                      )}
-                    </div>
-                    <div>
-                      <span className="text-sm font-semibold block">Yes, Find a Guide</span>
-                      <span className="text-[11px] text-[#6b7280]">Discover licensed guides for your areas</span>
-                    </div>
-                  </div>
+                  <Check className="w-4 h-4" />
+                  Yes
                 </button>
               </div>
 
-            {/* ─── Guide Discovery Panel (visible when Yes, Find a Guide is selected) ─── */}
-            {(guidePreference === "CHOOSE_GUIDE" || guidePreference === "NEED_GUIDE") && (
-              <div className="mt-4 rounded-2xl border border-[#DFECC6] bg-gradient-to-br from-[#fafbf8] via-white to-[#f4f7ee] p-5 shadow-xs">
-                {/* Header with Refresh */}
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <h4 className="text-sm font-bold text-[#1a1a1a] flex items-center gap-1.5">
-                      <Compass className="w-4 h-4 text-[#485C11]" />
-                      Recommended Guides
-                    </h4>
-                    <p className="text-xs text-[#6b7280]">
-                      Verified, licensed guides available for your trip
-                    </p>
+              {/* Guide Dropdown (Shown ONLY when Yes is selected) */}
+              {guidePreference !== "NO_GUIDE" && (
+                <div className="mt-4 pt-3.5 border-t border-[#DFECC6]/70 animate-in fade-in-0 duration-200 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-bold text-gray-700">
+                      Choose Your Tour Guide
+                    </label>
+                    {loadingGuides ? (
+                      <span className="text-[11px] text-[#485C11] flex items-center gap-1 font-medium">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        Finding guides...
+                      </span>
+                    ) : availableGuides.length > 0 ? (
+                      <span className="text-[11px] text-[#485C11] font-semibold">
+                        {availableGuides.length} verified guide{availableGuides.length === 1 ? "" : "s"} found
+                      </span>
+                    ) : null}
                   </div>
-                  {(selectedDestinations.length > 0 || citiesText.trim()) && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => fetchGuidesForDestinations()}
-                      disabled={loadingGuides}
-                      className="text-xs h-8 border-[#DFECC6] hover:bg-[#DFECC6]/30 text-[#485C11]"
-                    >
-                      <RotateCcw className={`w-3 h-3 mr-1 ${loadingGuides ? "animate-spin" : ""}`} />
-                      Refresh
-                    </Button>
+
+                  <Select
+                    value={selectedGuide?.id || (guidePreference === "NEED_GUIDE" ? "auto" : "")}
+                    onValueChange={(val) => {
+                      if (val === "auto") {
+                        setGuidePreference("NEED_GUIDE");
+                        setSelectedGuide(null);
+                      } else {
+                        const found = availableGuides.find((g) => g.id === val);
+                        if (found) {
+                          setSelectedGuide(found);
+                          setGuidePreference("CHOOSE_GUIDE");
+                        }
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="w-full bg-white border-[#d2d7c5] focus:ring-[#485C11]">
+                      <SelectValue placeholder="Select a guide or choose Auto-Match..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="auto" className="font-medium text-[#2f3d0c]">
+                        ✨ Auto-Match: Let Roamly assign the best licensed guide
+                      </SelectItem>
+                      {availableGuides.map((guide) => (
+                        <SelectItem key={guide.id} value={guide.id}>
+                          {guide.name} — ₹{guide.hourlyRate}/hr ({guide.experienceYears}y exp{guide.rating > 0 ? ` · ★ ${guide.rating.toFixed(1)}` : ""})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {/* Selected Guide Details or Auto-Match Confirmation */}
+                  {selectedGuide ? (
+                    <div className="p-3 rounded-xl bg-white border border-[#DFECC6] flex items-center justify-between gap-3 shadow-2xs">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-8 h-8 rounded-full bg-[#485C11] text-white flex items-center justify-center font-bold text-xs shrink-0">
+                          {selectedGuide.name.charAt(0)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-gray-900 truncate">
+                            {selectedGuide.name}
+                            <span className="ml-2 font-semibold text-[#485C11]">₹{selectedGuide.hourlyRate}/hr</span>
+                          </p>
+                          <p className="text-[11px] text-gray-500 truncate">
+                            {selectedGuide.coverageLabel || (selectedGuide.matchedAreas?.length ? `Covers ${selectedGuide.matchedAreas.join(" + ")}` : "Verified Guide")}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedGuide(null);
+                          setGuidePreference("NEED_GUIDE");
+                        }}
+                        className="text-xs text-gray-400 hover:text-red-600 transition-colors font-medium shrink-0 cursor-pointer"
+                        title="Reset to Auto-Match"
+                      >
+                        Reset
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-[#485C11] font-medium flex items-center gap-1.5 bg-[#DFECC6]/40 p-2.5 rounded-lg border border-[#8E9C78]/30">
+                      <CheckCircle className="w-3.5 h-3.5 shrink-0" />
+                      Roamly will automatically match and coordinate a licensed local guide for your trip destinations.
+                    </p>
                   )}
                 </div>
+              )}
 
-                {/* Selected Areas Pill Tags */}
-                {(() => {
-                  const currentAreas = selectedDestinations.length > 0
-                    ? selectedDestinations.map((d) => d.name)
-                    : citiesText.split(",").map((s) => s.trim()).filter(Boolean);
-
-                  return (
-                    <div className="mb-4 p-3 rounded-xl bg-white border border-[#e5e7db]">
-                      <span className="text-[11px] font-semibold text-[#485C11] uppercase tracking-wider block mb-1.5">
-                        Your Selected Trip Areas:
-                      </span>
-                      {currentAreas.length === 0 ? (
-                        <p className="text-xs text-[#9ca3af] italic">
-                          Enter or select destinations above to discover guides for those areas.
-                        </p>
-                      ) : (
-                        <div className="flex flex-wrap gap-1.5 items-center">
-                          {currentAreas.map((area, idx) => (
-                            <span
-                              key={`${area}-${idx}`}
-                              className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full bg-[#DFECC6]/60 text-[#38480e] border border-[#8E9C78]/30"
-                            >
-                              📍 {area}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Multi-Area Coverage Notice */}
-                      {currentAreas.length > 1 && availableGuides.length > 0 && (
-                        <div className="mt-2.5 pt-2 border-t border-[#f0f2eb]">
-                          {hasSingleGuideCoveringAll ? (
-                            <div className="flex items-center gap-1.5 text-xs font-medium text-[#485C11]">
-                              <CheckCircle className="w-3.5 h-3.5" />
-                              <span>Covers all selected areas</span>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-1.5 text-xs text-[#b45309]">
-                              <AlertCircle className="w-3.5 h-3.5" />
-                              <span>No single guide covers all selected areas. Available guides are shown below grouped by coverage.</span>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
-
-                {/* Guides Loading / Empty / List */}
-                {loadingGuides ? (
-                  <div className="flex flex-col items-center justify-center py-8 bg-white/50 rounded-xl border border-dashed border-[#DFECC6]">
-                    <Loader2 className="w-6 h-6 text-[#485C11] animate-spin mb-2" />
-                    <span className="text-xs text-[#6b7280]">Searching eligible guides for your selected areas…</span>
-                  </div>
-                ) : availableGuides.length === 0 ? (
-                  <div className="text-center py-8 bg-white/60 rounded-xl border border-dashed border-[#e5e7db] p-4">
-                    <User className="w-8 h-8 text-[#9ca3af] mx-auto mb-2" />
-                    <p className="text-xs font-medium text-[#4a5043]">
-                      No verified and available guides found matching your selected areas.
-                    </p>
-                    <p className="text-[11px] text-[#9ca3af] mt-1">
-                      You can continue planning without a guide, or try searching for another nearby area.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-3 max-h-[440px] overflow-y-auto pr-1">
-                    {availableGuides.map((guide) => {
-                      const isSelected = selectedGuide?.id === guide.id;
-                      return (
-                        <div
-                          key={guide.id}
-                          className={`rounded-2xl border-2 p-4 transition-all duration-200 bg-white ${
-                            isSelected
-                              ? "border-[#485C11] shadow-md ring-2 ring-[#485C11]/20 bg-[#f9faf7]"
-                              : "border-[#e5e7db] hover:border-[#8E9C78]/70 hover:shadow-xs"
-                          }`}
-                        >
-                          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-                            <div className="flex items-start gap-3 flex-1 min-w-0">
-                              {/* Guide Photo */}
-                              <div className="w-14 h-14 rounded-xl overflow-hidden shrink-0 border border-[#e5e7db] bg-[#DFECC6]/40 flex items-center justify-center">
-                                {guide.profilePhoto ? (
-                                  <img
-                                    src={guide.profilePhoto}
-                                    alt={guide.name}
-                                    className="w-full h-full object-cover"
-                                  />
-                                ) : (
-                                  <User className="w-6 h-6 text-[#485C11]" />
-                                )}
-                              </div>
-
-                              {/* Details */}
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <h5 className="text-sm font-bold text-[#1a1a1a]">{guide.name}</h5>
-                                  <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                    <Check className="w-2.5 h-2.5" /> Available
-                                  </span>
-                                  {guide.matchType && (
-                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                                      guide.matchType === "MULTI_AREA"
-                                        ? "bg-purple-50 text-purple-700 border border-purple-200"
-                                        : guide.matchType === "EXACT"
-                                        ? "bg-blue-50 text-blue-700 border border-blue-200"
-                                        : "bg-amber-50 text-amber-700 border border-amber-200"
-                                    }`}>
-                                      {guide.matchType === "MULTI_AREA"
-                                        ? "MULTI-AREA MATCH"
-                                        : guide.matchType === "EXACT"
-                                        ? "EXACT MATCH"
-                                        : "NEARBY MATCH"}
-                                    </span>
-                                  )}
-                                </div>
-
-                                {/* Price & Experience */}
-                                <div className="flex items-center gap-3 mt-1 text-xs">
-                                  <span className="font-bold text-[#485C11]">
-                                    ₹{guide.hourlyRate}/hour
-                                  </span>
-                                  <span className="text-[#6b7280]">
-                                    {guide.experienceYears}y exp
-                                  </span>
-                                  {guide.rating > 0 && (
-                                    <span className="inline-flex items-center text-amber-600 font-medium">
-                                      ★ {guide.rating.toFixed(1)}
-                                    </span>
-                                  )}
-                                </div>
-
-                                {/* Coverage & Matches */}
-                                <div className="mt-2 space-y-1">
-                                  {guide.matchedAreas && guide.matchedAreas.length > 0 && (
-                                    <div className="flex items-center gap-1.5 text-xs text-[#38480e]">
-                                      <span className="font-semibold">Covers:</span>
-                                      <span>{guide.matchedAreas.join(", ")}</span>
-                                    </div>
-                                  )}
-
-                                  {guide.coverageLabel && (
-                                    <div className="text-[11px] font-medium text-[#485C11]">
-                                      ✓ {guide.coverageLabel}
-                                    </div>
-                                  )}
-
-                                  {guide.nearbyAreas && guide.nearbyAreas.length > 0 && (
-                                    <div className="text-[11px] text-[#b45309]">
-                                      📍 Nearby: {guide.nearbyAreas.join(", ")}
-                                      {guide.distanceKm != null && ` (${guide.distanceKm.toFixed(1)} km away)`}
-                                    </div>
-                                  )}
-                                </div>
-
-                                {/* Languages */}
-                                {guide.languages && guide.languages.length > 0 && (
-                                  <div className="flex items-center gap-1 mt-2 flex-wrap">
-                                    <Languages className="w-3 h-3 text-[#9ca3af]" />
-                                    {guide.languages.slice(0, 3).map((lang) => (
-                                      <span
-                                        key={lang}
-                                        className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 font-medium"
-                                      >
-                                        {lang}
-                                      </span>
-                                    ))}
-                                    {guide.languages.length > 3 && (
-                                      <span className="text-[10px] text-gray-400">+{guide.languages.length - 3}</span>
-                                    )}
-                                  </div>
-                                )}
-
-                                {/* Bio */}
-                                {guide.bio && (
-                                  <p className="text-xs text-[#6b7280] mt-1.5 line-clamp-2 italic">
-                                    &ldquo;{guide.bio}&rdquo;
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Select Action Button */}
-                            <div className="sm:self-center shrink-0">
-                              {isSelected ? (
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  onClick={() => setSelectedGuide(null)}
-                                  className="bg-[#485C11] hover:bg-[#38480e] text-white text-xs rounded-xl shadow-xs"
-                                >
-                                  <Check className="w-3.5 h-3.5 mr-1" /> Selected
-                                </Button>
-                              ) : (
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => setSelectedGuide(guide)}
-                                  className="text-xs border-[#485C11]/40 text-[#485C11] hover:bg-[#DFECC6]/40 rounded-xl"
-                                >
-                                  Select Guide
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Selected Guide Confirmation Banner */}
-                {selectedGuide && (
-                  <div className="mt-4 p-3.5 rounded-xl bg-[#DFECC6]/60 border border-[#8E9C78]/50 flex items-center justify-between gap-3 shadow-xs">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-full bg-[#485C11] text-white flex items-center justify-center font-bold text-xs">
-                        {selectedGuide.name.charAt(0)}
-                      </div>
-                      <div>
-                        <div className="text-xs font-bold text-[#1a1a1a]">
-                          Selected Guide: {selectedGuide.name}
-                          <span className="ml-2 font-semibold text-[#485C11]">₹{selectedGuide.hourlyRate}/hour</span>
-                        </div>
-                        <p className="text-[11px] text-[#4a5043]">
-                          {selectedGuide.coverageLabel || (selectedGuide.matchedAreas?.length ? `Covers ${selectedGuide.matchedAreas.join(" + ")}` : "Verified Guide")}
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedGuide(null)}
-                      className="text-xs text-[#6b7280] hover:text-red-600 transition-colors font-medium px-2 py-1"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
 
             {/* Travel Interests (Combined Multi-select Dropdown) */}
@@ -1825,7 +1956,7 @@ export default function LLMPage() {
                 <span className="text-sm text-gray-600">
                   {jobStatus === 'queued' && 'Job queued, waiting to start...'}
                   {jobStatus === 'processing' && 'Processing your travel plan...'}
-                  {jobStatus === 'completed' && 'Travel plan completed!'}
+                  {jobStatus === 'completed' && 'Travel plan completed! Review & accept below.'}
                   {jobStatus === 'failed' && 'Job failed'}
                 </span>
               </div>
@@ -1833,51 +1964,66 @@ export default function LLMPage() {
 
             {/* Job Status with Progress */}
             {jobStatus !== 'idle' && (
-              <div className={`p-4 rounded-md ${jobStatus === 'completed' ? 'bg-green-50 border border-green-200' :
+              <div className={`p-4 rounded-xl border transition-all ${jobStatus === 'completed' ? 'bg-[#DFECC6]/40 border-[#8E9C78]/60 shadow-xs' :
                 jobStatus === 'failed' ? 'bg-red-50 border border-red-200' :
                   jobStatus === 'queued' ? 'bg-blue-50 border border-blue-200' :
-                    'bg-yellow-50 border border-yellow-200'
+                    'bg-amber-50/80 border border-amber-200'
                 }`}>
-                <div className="flex items-center gap-3 mb-3">
-                  {jobStatus === 'completed' ? (
-                    <CheckCircle className="h-5 w-5 text-green-500" />
-                  ) : jobStatus === 'failed' ? (
-                    <AlertCircle className="h-5 w-5 text-red-500" />
-                  ) : jobStatus === 'queued' ? (
-                    <Clock className="h-5 w-5 text-blue-500" />
-                  ) : (
-                    <Loader2 className="h-5 w-5 text-yellow-500 animate-spin" />
-                  )}
-                  <div className="flex-1">
-                    <p className={`font-medium ${jobStatus === 'completed' ? 'text-green-700' :
-                      jobStatus === 'failed' ? 'text-red-700' :
-                        jobStatus === 'queued' ? 'text-blue-700' :
-                          'text-yellow-700'
-                      }`}>
-                      {jobStatus === 'completed' ? 'Travel plan generated successfully!' :
-                        jobStatus === 'failed' ? 'Failed to generate travel plan' :
-                          jobStatus === 'queued' ? 'Job submitted to queue, processing...' :
-                            'Processing your request...'}
-                    </p>
-                    <p className={`text-xs ${jobStatus === 'completed' ? 'text-green-600' :
-                      jobStatus === 'failed' ? 'text-red-600' :
-                        jobStatus === 'queued' ? 'text-blue-600' :
-                          'text-yellow-600'
-                      }`}>
-                      {jobStatus === 'completed' ? 'Your itinerary is ready below' :
-                        jobStatus === 'failed' ? 'Please try again or check your inputs' :
-                          jobStatus === 'queued' ? 'Waiting in queue...' :
-                            'Generating your personalized travel plan...'}
-                    </p>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                  <div className="flex items-center gap-3">
+                    {jobStatus === 'completed' ? (
+                      <CheckCircle className="h-5 w-5 text-[#485C11] shrink-0" />
+                    ) : jobStatus === 'failed' ? (
+                      <AlertCircle className="h-5 w-5 text-red-500 shrink-0" />
+                    ) : jobStatus === 'queued' ? (
+                      <Clock className="h-5 w-5 text-blue-500 shrink-0" />
+                    ) : (
+                      <Loader2 className="h-5 w-5 text-amber-600 animate-spin shrink-0" />
+                    )}
+                    <div>
+                      <p className={`font-semibold text-sm ${jobStatus === 'completed' ? 'text-[#2a3809]' :
+                        jobStatus === 'failed' ? 'text-red-700' :
+                          jobStatus === 'queued' ? 'text-blue-700' :
+                            'text-amber-800'
+                        }`}>
+                        {jobStatus === 'completed' ? 'Travel plan generated successfully!' :
+                          jobStatus === 'failed' ? 'Failed to generate travel plan' :
+                            jobStatus === 'queued' ? 'Job submitted to queue, processing...' :
+                              'Processing your request...'}
+                      </p>
+                      <p className={`text-xs ${jobStatus === 'completed' ? 'text-[#485C11]' :
+                        jobStatus === 'failed' ? 'text-red-600' :
+                          jobStatus === 'queued' ? 'text-blue-600' :
+                            'text-amber-700'
+                        }`}>
+                        {jobStatus === 'completed' ? 'Your personalized itinerary is ready below — please Accept or Reject below' :
+                          jobStatus === 'failed' ? 'Please try again or check your inputs' :
+                            jobStatus === 'queued' ? 'Waiting in queue...' :
+                              'Generating your personalized travel plan...'}
+                      </p>
+                    </div>
                   </div>
+
+                  {jobStatus === 'completed' && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => {
+                        document.getElementById("generated-itinerary-output")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                      }}
+                      className="bg-[#485C11] hover:bg-[#38480e] text-white text-xs rounded-xl shadow-xs shrink-0 self-start sm:self-center"
+                    >
+                      View & Accept Plan ↓
+                    </Button>
+                  )}
                 </div>
 
                 {/* Progress Bar */}
                 <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div className={`h-2 rounded-full transition-all duration-1000 ${jobStatus === 'completed' ? 'bg-green-500 w-full' :
+                  <div className={`h-2 rounded-full transition-all duration-700 ${jobStatus === 'completed' ? 'bg-[#485C11] w-full' :
                     jobStatus === 'failed' ? 'bg-red-500 w-full' :
                       jobStatus === 'queued' ? 'bg-blue-500 w-1/3' :
-                        'bg-yellow-500 w-2/3'
+                        'bg-amber-500 w-2/3'
                     }`}></div>
                 </div>
               </div>
@@ -1894,28 +2040,31 @@ export default function LLMPage() {
 
         {/* Plan Output */}
         {plan && (
-          <div className="space-y-6">
+          <div id="generated-itinerary-output" className="space-y-6 scroll-mt-6">
             {/* Itinerary Decision Card (Accept / Reject) */}
             {decisionStatus === 'pending' && (
-              <Card className="border-2 border-[#8E9C78]/40 bg-gradient-to-r from-[#DFECC6]/30 via-white to-[#DFECC6]/30 shadow-md">
+              <Card className="border-2 border-[#485C11]/50 bg-gradient-to-r from-[#DFECC6]/40 via-white to-[#DFECC6]/40 shadow-lg ring-2 ring-[#485C11]/20 animate-in fade-in-0 duration-300">
                 <CardContent className="p-6">
                   <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                     <div>
                       <div className="flex items-center gap-2">
-                        <Sparkles className="size-5 text-[#485C11]" />
+                        <Sparkles className="size-5 text-[#485C11] animate-pulse" />
                         <h3 className="text-lg font-bold text-[#1a1a1a]">
                           Review Your Generated Itinerary
                         </h3>
+                        <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-[#485C11] text-white">
+                          Action Required
+                        </span>
                       </div>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Would you like to accept this plan and add it directly to your schedule?
+                      <p className="text-sm text-gray-600 mt-1">
+                        Review your personalized itinerary below. Would you like to accept this plan and add it to your schedule?
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-3 w-full md:w-auto">
+                    <div className="flex items-center gap-3 w-full md:w-auto shrink-0">
                       <Button
                         onClick={handleAcceptPlan}
-                        className="flex-1 md:flex-none bg-[#485C11] hover:bg-[#3a4d0d] text-white rounded-full px-6 shadow-sm"
+                        className="flex-1 md:flex-none bg-[#485C11] hover:bg-[#3a4d0d] text-white font-semibold rounded-full px-6 py-2.5 shadow-md transition-all hover:scale-105"
                       >
                         <Check className="mr-2 size-4" />
                         Accept Itinerary
@@ -1923,7 +2072,7 @@ export default function LLMPage() {
                       <Button
                         variant="outline"
                         onClick={handleRejectPlan}
-                        className="flex-1 md:flex-none rounded-full px-6 border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+                        className="flex-1 md:flex-none rounded-full px-6 py-2.5 border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800 font-semibold transition-all"
                       >
                         <X className="mr-2 size-4" />
                         Reject
@@ -2038,165 +2187,732 @@ export default function LLMPage() {
               </CardContent>
             </Card>
 
-            {/* Itinerary */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Detailed Itinerary</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-6">
-                  {(plan?.itinerary || []).map((day, idx) => (
-                    <div key={idx} className="border-l-2 border-[#485C11]/30 pl-4 py-1">
-                      <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="font-semibold text-lg text-gray-900">{day.day}</h3>
-                          {day.theme && (
-                            <Badge variant="outline" className="text-xs bg-[#DFECC6]/40 border-[#8E9C78]/50 text-[#303f0b] font-medium">
-                              {day.theme}
-                            </Badge>
-                          )}
-                          <Badge variant="outline" className="text-xs">
-                            <MapPin className="h-3 w-3 mr-1 text-[#485C11]" />
-                            {day.city}
-                          </Badge>
-                          {day.weather && (
-                            <Badge variant="secondary" className="text-xs bg-sky-50 text-sky-800 border-sky-200">
-                              <span className="mr-1">{day.weather.emoji}</span>
-                              {day.weather.description} · {day.weather.minC}–{day.weather.maxC}°C
-                            </Badge>
-                          )}
-                        </div>
-                        <Badge variant="secondary" className="text-xs font-semibold text-[#485C11] bg-[#DFECC6]/60">
-                          <IndianRupee className="h-3 w-3 mr-1" />
-                          {day.estimated_cost}
-                        </Badge>
-                      </div>
+            {/* Interactive Day-by-Day Itinerary Cards */}
+            <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-[#DFECC6] shadow-xs">
+                <div>
+                  <h3 className="text-lg font-bold text-[#1a1a1a] flex items-center gap-2">
+                    <CalendarIcon className="size-5 text-[#485C11]" />
+                    Day-by-Day Itinerary
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Click any day card to explore its morning, afternoon, and evening schedule details.
+                  </p>
+                </div>
 
-                      {day.description && (
-                        <p className="text-xs text-gray-600 mb-3 italic leading-relaxed">
-                          {day.description}
-                        </p>
-                      )}
+                <div className="flex items-center gap-2 self-start sm:self-center">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={expandedDays.size === (plan?.itinerary?.length || 0) ? collapseAllDays : expandAllDays}
+                    className="text-xs border-[#8E9C78]/50 text-[#485C11] hover:bg-[#DFECC6]/40 rounded-xl"
+                  >
+                    <Layers className="size-3.5 mr-1.5" />
+                    {expandedDays.size === (plan?.itinerary?.length || 0) ? "Collapse All Days" : "Expand All Days"}
+                  </Button>
+                  <Badge variant="outline" className="bg-[#DFECC6]/40 border-[#8E9C78]/50 text-[#303f0b] text-xs font-semibold">
+                    {plan?.itinerary?.length || 0} Days
+                  </Badge>
+                </div>
+              </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
-                        <div className="p-2.5 rounded-xl bg-gray-50/70 border border-gray-100">
-                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Morning</p>
-                          <p className="text-sm text-gray-700">{day.morning}</p>
-                        </div>
-                        <div className="p-2.5 rounded-xl bg-gray-50/70 border border-gray-100">
-                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Afternoon</p>
-                          <p className="text-sm text-gray-700">{day.afternoon}</p>
-                        </div>
-                        <div className="p-2.5 rounded-xl bg-gray-50/70 border border-gray-100">
-                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Evening</p>
-                          <p className="text-sm text-gray-700">{day.evening}</p>
-                        </div>
-                      </div>
+              {/* Day Selector Quick Navigation Pills */}
+              {(plan?.itinerary || []).length > 1 && (
+                <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+                  {(plan?.itinerary || []).map((day, idx) => {
+                    const isExpanded = expandedDays.has(idx);
+                    return (
+                      <button
+                        key={`day-nav-pill-${idx}`}
+                        type="button"
+                        onClick={() => {
+                          if (!isExpanded) toggleDayExpansion(idx);
+                          const el = document.getElementById(`day-card-${idx}`);
+                          if (el) {
+                            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                          }
+                        }}
+                        className={`text-xs font-medium px-3.5 py-1.5 rounded-full border transition-all shrink-0 cursor-pointer flex items-center gap-1.5 ${
+                          isExpanded
+                            ? "bg-[#485C11] text-white border-[#485C11] shadow-xs"
+                            : "bg-white text-gray-700 border-gray-200 hover:border-[#8E9C78] hover:bg-[#DFECC6]/30"
+                        }`}
+                      >
+                        <span className="font-bold">{day.day}</span>
+                        <span className="opacity-80">· {day.city}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
-                        <div>
-                          <p className="text-xs font-medium text-gray-500 uppercase">Accommodation</p>
-                          <p className="text-sm text-gray-700">{day.accommodation}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs font-medium text-gray-500 uppercase">Dining & Food</p>
-                          <p className="text-sm text-gray-700">{day.meals}</p>
-                        </div>
-                      </div>
+              {/* Day Cards List */}
+              <div className="space-y-4">
+                {(plan?.itinerary || []).map((day, idx) => {
+                  const isExpanded = expandedDays.has(idx);
+                  return (
+                    <Card
+                      key={`day-card-${idx}`}
+                      id={`day-card-${idx}`}
+                      className={`transition-all duration-200 border-2 overflow-hidden ${
+                        isExpanded
+                          ? "border-[#485C11]/50 bg-white ring-1 ring-[#485C11]/20 shadow-md"
+                          : "border-[#e5e7db] bg-gradient-to-r from-white via-[#FAFBF8] to-white hover:border-[#8E9C78]/70 hover:shadow-md"
+                      }`}
+                    >
+                      {/* Clickable Header */}
+                      <div
+                        onClick={() => toggleDayExpansion(idx)}
+                        className="p-4 sm:p-5 cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-3.5 select-none"
+                      >
+                        <div className="flex items-start sm:items-center gap-3">
+                          <span
+                            className={`px-3.5 py-1.5 rounded-xl font-bold text-xs sm:text-sm tracking-wide shadow-2xs shrink-0 transition-colors ${
+                              isExpanded
+                                ? "bg-[#485C11] text-white"
+                                : "bg-[#DFECC6] text-[#293608]"
+                            }`}
+                          >
+                            {day.day}
+                          </span>
 
-                      {/* Dedicated Local Guide Card */}
-                      {day.guide ? (
-                        <div className="mt-3 p-3 rounded-xl bg-[#DFECC6]/40 border border-[#8E9C78]/30 flex items-center justify-between flex-wrap gap-2">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-8 h-8 rounded-lg bg-[#485C11]/15 flex items-center justify-center text-[#485C11] shrink-0">
-                              <User className="w-4 h-4" />
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="font-bold text-base text-gray-900">
+                                {day.theme || `${day.city} Discovery`}
+                              </h4>
+                              <span className="inline-flex items-center text-xs font-semibold text-gray-700 bg-gray-100 px-2.5 py-0.5 rounded-full border border-gray-200">
+                                <MapPin className="h-3 w-3 mr-1 text-[#485C11]" />
+                                {day.city}
+                              </span>
+                              {day.weather && (
+                                <span className="inline-flex items-center text-xs text-sky-800 bg-sky-50 border border-sky-200 px-2.5 py-0.5 rounded-full font-medium">
+                                  <span className="mr-1">{day.weather.emoji}</span>
+                                  {day.weather.description} · {day.weather.minC}–{day.weather.maxC}°C
+                                </span>
+                              )}
                             </div>
-                            <div>
-                              <p className="text-xs font-bold text-[#1a1a1a]">
-                                Local Guide: {day.guide.name}
-                                {day.guide.isDemo && (
-                                  <span className="ml-1 text-[10px] text-amber-600 font-normal">(Demo Guide)</span>
-                                )}
+
+                            {/* Collapsed Preview Snippets */}
+                            {!isExpanded && (
+                              <div className="flex items-center gap-2.5 mt-2 text-xs text-gray-500 flex-wrap">
+                                <span className="inline-flex items-center gap-1 text-amber-700 font-medium">
+                                  <Sunrise className="size-3" /> Morning
+                                </span>
+                                <span className="text-gray-300">•</span>
+                                <span className="inline-flex items-center gap-1 text-sky-700 font-medium">
+                                  <Sun className="size-3" /> Afternoon
+                                </span>
+                                <span className="text-gray-300">•</span>
+                                <span className="inline-flex items-center gap-1 text-indigo-700 font-medium">
+                                  <Moon className="size-3" /> Evening
+                                </span>
+                                <span className="text-gray-300">•</span>
+                                <span className="text-gray-400 italic">Click card to view details</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Right side Badges & Toggle Button */}
+                        <div className="flex items-center gap-2.5 self-end md:self-center shrink-0">
+                          <Badge variant="secondary" className="text-xs font-bold text-[#485C11] bg-[#DFECC6]/60 px-3 py-1">
+                            <IndianRupee className="h-3 w-3 mr-0.5" />
+                            {day.estimated_cost}
+                          </Badge>
+
+                          <span
+                            className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full transition-all ${
+                              isExpanded
+                                ? "bg-[#485C11]/10 text-[#485C11]"
+                                : "bg-gray-100 text-gray-700 hover:bg-[#DFECC6]/60"
+                            }`}
+                          >
+                            <span>{isExpanded ? "Collapse" : "View Morning, Afternoon & Evening"}</span>
+                            {isExpanded ? (
+                              <ChevronUp className="w-4 h-4 text-[#485C11]" />
+                            ) : (
+                              <ChevronDown className="w-4 h-4 text-gray-600" />
+                            )}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Expanded Details Body */}
+                      {isExpanded && (
+                        <CardContent className="px-4 sm:px-5 pb-5 pt-0 border-t border-gray-100 animate-in fade-in-0 duration-200">
+                          {/* Overview Description */}
+                          {day.description && (
+                            <div className="my-3.5 p-3.5 rounded-xl bg-[#FAFBF8] border border-[#e5e7db] text-xs text-gray-700 italic leading-relaxed">
+                              &ldquo;{day.description}&rdquo;
+                            </div>
+                          )}
+
+                          {/* Morning, Afternoon, Evening Cards */}
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 mt-3 mb-4">
+                            {/* Morning Card */}
+                            <div className="rounded-2xl p-4 bg-gradient-to-br from-amber-50/70 via-orange-50/30 to-white border border-amber-200/70 shadow-2xs">
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                  <div className="size-7 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
+                                    <Sunrise className="size-4" />
+                                  </div>
+                                  <span className="text-xs font-bold uppercase tracking-wider text-amber-900">Morning</span>
+                                </div>
+                                <span className="text-[10px] font-semibold text-amber-700 bg-amber-100/70 px-2 py-0.5 rounded-full">
+                                  08:00 – 12:30
+                                </span>
+                              </div>
+                              <p className="text-xs sm:text-sm text-gray-800 leading-relaxed">
+                                {day.morning}
                               </p>
-                              <p className="text-[11px] text-[#6b7280]">
-                                Dedicated local expertise · ₹{day.guide.hourlyRate}/hr (est. ₹{day.guide.cost})
+                            </div>
+
+                            {/* Afternoon Card */}
+                            <div className="rounded-2xl p-4 bg-gradient-to-br from-sky-50/70 via-blue-50/30 to-white border border-sky-200/70 shadow-2xs">
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                  <div className="size-7 rounded-lg bg-sky-100 text-sky-700 flex items-center justify-center">
+                                    <Sun className="size-4" />
+                                  </div>
+                                  <span className="text-xs font-bold uppercase tracking-wider text-sky-900">Afternoon</span>
+                                </div>
+                                <span className="text-[10px] font-semibold text-sky-700 bg-sky-100/70 px-2 py-0.5 rounded-full">
+                                  12:30 – 17:00
+                                </span>
+                              </div>
+                              <p className="text-xs sm:text-sm text-gray-800 leading-relaxed">
+                                {day.afternoon}
+                              </p>
+                            </div>
+
+                            {/* Evening Card */}
+                            <div className="rounded-2xl p-4 bg-gradient-to-br from-indigo-50/70 via-purple-50/30 to-white border border-indigo-200/70 shadow-2xs">
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                  <div className="size-7 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center">
+                                    <Moon className="size-4" />
+                                  </div>
+                                  <span className="text-xs font-bold uppercase tracking-wider text-indigo-900">Evening</span>
+                                </div>
+                                <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-100/70 px-2 py-0.5 rounded-full">
+                                  17:00 – 21:30
+                                </span>
+                              </div>
+                              <p className="text-xs sm:text-sm text-gray-800 leading-relaxed">
+                                {day.evening}
                               </p>
                             </div>
                           </div>
-                          <Badge variant="secondary" className="text-[10px] bg-[#485C11] text-white">
-                            Verified Guide
-                          </Badge>
-                        </div>
-                      ) : (
-                        <div className="mt-2 text-xs text-[#9ca3af] italic">
-                          Self-guided exploration
-                        </div>
+
+                          {/* Accommodation & Dining Section */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 mb-3">
+                            <div className="p-3.5 rounded-xl bg-gray-50/80 border border-gray-200 flex items-start gap-3">
+                              <div className="size-8 rounded-lg bg-[#485C11]/10 text-[#485C11] flex items-center justify-center shrink-0 mt-0.5">
+                                <Hotel className="size-4" />
+                              </div>
+                              <div>
+                                <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Stay & Accommodation</p>
+                                <p className="text-xs sm:text-sm text-gray-800 font-medium mt-0.5">{day.accommodation}</p>
+                              </div>
+                            </div>
+
+                            <div className="p-3.5 rounded-xl bg-gray-50/80 border border-gray-200 flex items-start gap-3">
+                              <div className="size-8 rounded-lg bg-[#485C11]/10 text-[#485C11] flex items-center justify-center shrink-0 mt-0.5">
+                                <Utensils className="size-4" />
+                              </div>
+                              <div>
+                                <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Dining & Recommended Food</p>
+                                <p className="text-xs sm:text-sm text-gray-800 font-medium mt-0.5">{day.meals}</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Dedicated Local Guide Card */}
+                          {day.guide ? (
+                            <div className="mt-3 p-3.5 rounded-xl bg-[#DFECC6]/40 border border-[#8E9C78]/40 flex items-center justify-between flex-wrap gap-2">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-lg bg-[#485C11]/15 flex items-center justify-center text-[#485C11] shrink-0">
+                                  <User className="w-4 h-4" />
+                                </div>
+                                <div>
+                                  <p className="text-xs font-bold text-[#1a1a1a]">
+                                    Local Guide: {day.guide.name}
+                                    {day.guide.isDemo && (
+                                      <span className="ml-1 text-[10px] text-amber-600 font-normal">(Demo Guide)</span>
+                                    )}
+                                  </p>
+                                  <p className="text-[11px] text-[#6b7280]">
+                                    Dedicated local expertise · ₹{day.guide.hourlyRate}/hr (est. ₹{day.guide.cost})
+                                  </p>
+                                </div>
+                              </div>
+                              <Badge variant="secondary" className="text-[10px] bg-[#485C11] text-white">
+                                Verified Guide
+                              </Badge>
+                            </div>
+                          ) : (
+                            <div className="mt-2 text-xs text-gray-400 italic flex items-center gap-1.5">
+                              <Compass className="size-3.5 text-[#485C11]" />
+                              Self-guided exploration — enjoy independent discovery at your own pace
+                            </div>
+                          )}
+                        </CardContent>
                       )}
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Additional Info */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Travel Tips */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Travel Tips</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ul className="space-y-2">
-                    {(plan?.travel_tips || []).map((tip, idx) => (
-                      <li key={idx} className="flex items-start gap-2 text-sm">
-                        <span className="text-blue-600 mt-1">•</span>
-                        <span className="text-gray-700">{tip}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </CardContent>
-              </Card>
-
-              {/* Packing List */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Packing List</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ul className="space-y-2">
-                    {(plan?.packing_list || []).map((item, idx) => (
-                      <li key={idx} className="flex items-start gap-2 text-sm">
-                        <span className="text-blue-600 mt-1">•</span>
-                        <span className="text-gray-700">{item}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </CardContent>
-              </Card>
+                    </Card>
+                  );
+                })}
+              </div>
             </div>
 
-            {/* Emergency Contacts */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-red-700">Emergency Contacts</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <p className="text-xs font-medium text-gray-500 uppercase">Local Emergency</p>
-                    <p className="text-sm font-mono text-gray-700">{plan?.emergency_contacts?.local_emergency || "112 / 100"}</p>
+            {/* Travel Tips, Smart Packing List, and Emergency Directory */}
+            {(() => {
+              const activeDests =
+                selectedDestinations.length > 0
+                  ? selectedDestinations.map((d) => d.name)
+                  : plan?.itinerary && plan.itinerary.length > 0
+                  ? plan.itinerary.map((d) => d.city).filter(Boolean)
+                  : citiesText.split(",").map((s) => s.trim()).filter(Boolean);
+              const currentProfile = resolveDestinationProfile(activeDests);
+              const primaryCityName = plan?.itinerary?.[0]?.city || selectedDestinations?.[0]?.name || citiesText.split(",")[0]?.trim() || "Destination";
+
+              const allPackingItems = [...(plan?.packing_list || []), ...customPackingItems];
+              const totalPackingCount = allPackingItems.length;
+              const currentPackedCount = Object.values(packedItems).filter(Boolean).length;
+              const percentPacked = totalPackingCount > 0 ? Math.round((currentPackedCount / totalPackingCount) * 100) : 0;
+
+              const filteredPackingItems = allPackingItems.filter((item) => {
+                if (packingCategory === "all") return true;
+                const lower = item.toLowerCase();
+                if (packingCategory === "essentials") {
+                  return /passport|visa|id|card|cash|insurance|wallet|permit|license|proof|booking|reservation/i.test(lower);
+                }
+                if (packingCategory === "clothing") {
+                  return /shoe|apparel|jacket|shirt|pant|hat|sock|sandals|scarf|sunglasses|dress|rain|umbrella|linen|cotton|layer/i.test(lower);
+                }
+                if (packingCategory === "gear") {
+                  return /plug|adapter|power|charger|cable|sim|wifi|battery|phone|electronics|towel|pouch|coin/i.test(lower);
+                }
+                if (packingCategory === "health") {
+                  return /sunscreen|spf|medicine|first-aid|electrolyte|ors|sanitizer|wipes|bottle|hydration|mosquito|repellent/i.test(lower);
+                }
+                return true;
+              });
+
+              const parseEmergencyNumber = (rawVal?: string, defaultSub: string = "") => {
+                if (!rawVal) return { num: "112", sub: defaultSub };
+                const str = String(rawVal);
+                const cleanNum = str.replace(/\s*\([^)]*\)/g, "").replace(/\s+/g, " ").trim();
+                const parenMatch = str.match(/\(([^)]+)\)/);
+                const sub = parenMatch ? parenMatch[1] : defaultSub;
+                return {
+                  num: cleanNum || str,
+                  sub: sub || defaultSub,
+                };
+              };
+
+              const getDialableNumber = (numStr: string, fallback: string = "112"): string => {
+                if (!numStr) return fallback;
+                const firstPart = numStr.split("/")[0].trim();
+                const digits = firstPart.replace(/[^0-9+]/g, "");
+                return digits || fallback;
+              };
+
+              const parsedLocal = parseEmergencyNumber(
+                plan?.emergency_contacts?.local_emergency || currentProfile.emergency.local_emergency,
+                "Police & Urgent Dispatch"
+              );
+              const parsedAmbulance = parseEmergencyNumber(
+                plan?.emergency_contacts?.ambulance || currentProfile.emergency.ambulance,
+                "Emergency Medical Care"
+              );
+              const parsedTourist = parseEmergencyNumber(
+                plan?.emergency_contacts?.tourist_helpline || currentProfile.emergency.tourist_helpline,
+                "Visitor & Consular Support"
+              );
+
+              return (
+                <div className="space-y-6">
+                  {/* Row 1: Travel Tips & Smart Packing List */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+                    {/* Curated Travel & Cultural Tips */}
+                    <Card className="border border-[#8E9C78]/40 shadow-sm bg-gradient-to-br from-[#DFECC6]/15 via-white to-white flex flex-col justify-between">
+                      <CardHeader className="pb-3 border-b border-gray-100/80">
+                        <div className="flex items-center justify-between">
+                          <CardTitle className="text-base sm:text-lg font-bold flex items-center gap-2 text-[#2d3a0c]">
+                            <Compass className="size-5 text-[#485C11]" />
+                            Curated Travel & Cultural Tips
+                          </CardTitle>
+                          <Badge variant="outline" className="text-xs bg-[#DFECC6]/40 border-[#8E9C78]/50 text-[#303f0b] font-medium">
+                            📍 {currentProfile.country}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Verified local guidelines, payment customs & cultural etiquette
+                        </p>
+                      </CardHeader>
+                      <CardContent className="pt-4 flex-1">
+                        <div className="space-y-2.5">
+                          {(plan?.travel_tips || []).map((tip, idx) => {
+                            const [rawCategory, ...rest] = tip.includes(":") ? tip.split(":") : ["Guidance", tip];
+                            const content = rest.length > 0 ? rest.join(":") : rawCategory;
+                            const hasPrefix = rest.length > 0;
+                            const catLower = rawCategory.toLowerCase();
+
+                            let CatIcon = Compass;
+                            let badgeStyle = "bg-gray-100 text-gray-700 border-gray-200";
+
+                            if (catLower.includes("payment") || catLower.includes("cash") || catLower.includes("currency")) {
+                              CatIcon = CreditCard;
+                              badgeStyle = "bg-emerald-50 text-emerald-800 border-emerald-200";
+                            } else if (catLower.includes("culture") || catLower.includes("etiquette") || catLower.includes("temple") || catLower.includes("dress") || catLower.includes("respect")) {
+                              CatIcon = Landmark;
+                              badgeStyle = "bg-purple-50 text-purple-800 border-purple-200";
+                            } else if (catLower.includes("transit") || catLower.includes("commute") || catLower.includes("metro") || catLower.includes("ride") || catLower.includes("train")) {
+                              CatIcon = Bus;
+                              badgeStyle = "bg-blue-50 text-blue-800 border-blue-200";
+                            } else if (catLower.includes("power") || catLower.includes("plug") || catLower.includes("connectivity") || catLower.includes("wifi") || catLower.includes("sim")) {
+                              CatIcon = Zap;
+                              badgeStyle = "bg-amber-50 text-amber-800 border-amber-200";
+                            } else if (catLower.includes("dining") || catLower.includes("water") || catLower.includes("food") || catLower.includes("hydration")) {
+                              CatIcon = Utensils;
+                              badgeStyle = "bg-teal-50 text-teal-800 border-teal-200";
+                            } else if (catLower.includes("photo") || catLower.includes("sights") || catLower.includes("golden hour") || catLower.includes("sunrise")) {
+                              CatIcon = Sunrise;
+                              badgeStyle = "bg-rose-50 text-rose-800 border-rose-200";
+                            }
+
+                            return (
+                              <div
+                                key={idx}
+                                className="p-3 rounded-xl bg-white border border-[#8E9C78]/25 hover:border-[#485C11]/50 transition-all shadow-2xs hover:shadow-xs flex flex-col gap-1.5"
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold border ${badgeStyle}`}>
+                                    <CatIcon className="size-3" />
+                                    {hasPrefix ? rawCategory.trim() : `Insight #${idx + 1}`}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => copyToClipboard(`tip_${idx}`, tip)}
+                                    className="text-gray-400 hover:text-gray-700 transition-colors p-1"
+                                    title="Copy tip"
+                                  >
+                                    {copiedContact === `tip_${idx}` ? <Check className="size-3 text-green-600" /> : <Copy className="size-3" />}
+                                  </button>
+                                </div>
+                                <p className="text-xs sm:text-[13px] text-gray-700 leading-relaxed">
+                                  {content.trim()}
+                                </p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Smart Packing Checklist */}
+                    <Card className="border border-[#8E9C78]/40 shadow-sm bg-gradient-to-br from-white via-white to-gray-50/50 flex flex-col justify-between">
+                      <CardHeader className="pb-3 border-b border-gray-100/80">
+                        <div className="flex items-center justify-between">
+                          <CardTitle className="text-base sm:text-lg font-bold flex items-center gap-2 text-[#2d3a0c]">
+                            <Luggage className="size-5 text-[#485C11]" />
+                            Smart Packing Checklist
+                          </CardTitle>
+                          <Badge variant="secondary" className="text-xs bg-[#485C11] text-white">
+                            {currentPackedCount} / {totalPackingCount} Packed
+                          </Badge>
+                        </div>
+                        {/* Slim Progress Bar */}
+                        <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden mt-2">
+                          <div
+                            className="bg-gradient-to-r from-[#485C11] to-emerald-500 h-1.5 transition-all duration-300 rounded-full"
+                            style={{ width: `${percentPacked}%` }}
+                          />
+                        </div>
+                        {/* Category Pills & Bulk Actions */}
+                        <div className="flex flex-wrap items-center justify-between gap-1.5 pt-2">
+                          <div className="flex items-center gap-1 overflow-x-auto py-0.5">
+                            {[
+                              { id: "all", label: "All" },
+                              { id: "essentials", label: "Essentials" },
+                              { id: "clothing", label: "Clothing" },
+                              { id: "gear", label: "Gear" },
+                              { id: "health", label: "Health" }
+                            ].map((tab) => (
+                              <button
+                                key={tab.id}
+                                type="button"
+                                onClick={() => setPackingCategory(tab.id)}
+                                className={`text-[11px] px-2.5 py-0.5 rounded-full font-medium transition-colors ${
+                                  packingCategory === tab.id
+                                    ? "bg-[#485C11] text-white"
+                                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                                }`}
+                              >
+                                {tab.label}
+                              </button>
+                            ))}
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+                            <button
+                              type="button"
+                              onClick={handlePackAll}
+                              className="text-[11px] text-[#485C11] hover:underline font-medium"
+                            >
+                              Pack All
+                            </button>
+                            <span className="text-gray-300">•</span>
+                            <button
+                              type="button"
+                              onClick={handleResetPacked}
+                              className="text-[11px] text-gray-500 hover:underline"
+                            >
+                              Reset
+                            </button>
+                          </div>
+                        </div>
+                      </CardHeader>
+
+                      <CardContent className="pt-3 flex-1 flex flex-col justify-between">
+                        {/* Compact 2-Column Responsive Grid */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[320px] overflow-y-auto pr-0.5">
+                          {filteredPackingItems.map((item, idx) => {
+                            const actualIdx = allPackingItems.indexOf(item);
+                            const isPacked = !!packedItems[actualIdx];
+                            const isCustom = actualIdx >= (plan?.packing_list || []).length;
+                            return (
+                              <div
+                                key={actualIdx}
+                                onClick={() => togglePacked(actualIdx)}
+                                className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-2 ${
+                                  isPacked
+                                    ? "bg-emerald-50/70 border-emerald-200 text-emerald-900"
+                                    : "bg-white border-gray-200/80 hover:border-[#8E9C78] text-gray-700 shadow-2xs"
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                  <button
+                                    type="button"
+                                    className={`shrink-0 transition-colors ${isPacked ? "text-emerald-600" : "text-gray-400"}`}
+                                  >
+                                    {isPacked ? (
+                                      <CheckSquare className="size-4 fill-emerald-100 text-emerald-600" />
+                                    ) : (
+                                      <Square className="size-4" />
+                                    )}
+                                  </button>
+                                  <span className={`text-xs truncate ${isPacked ? "line-through opacity-70" : "font-medium"}`} title={item}>
+                                    {item}
+                                  </span>
+                                </div>
+                                {isCustom && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleRemoveCustomPackingItem(item, actualIdx);
+                                    }}
+                                    className="text-gray-400 hover:text-red-500 p-0.5 shrink-0"
+                                    title="Delete custom item"
+                                  >
+                                    <Trash2 className="size-3" />
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Inline Add Item Input */}
+                        <form onSubmit={handleAddCustomPackingItem} className="flex items-center gap-2 mt-3 pt-2.5 border-t border-gray-100">
+                          <Input
+                            value={newPackingInput}
+                            onChange={(e) => setNewPackingInput(e.target.value)}
+                            placeholder="+ Add personal item (e.g. Lens case, Camera)..."
+                            className="h-8 text-xs bg-white"
+                          />
+                          <Button
+                            type="submit"
+                            size="sm"
+                            variant="outline"
+                            className="h-8 text-xs px-2.5 shrink-0 border-[#8E9C78]/50 text-[#303f0b] hover:bg-[#DFECC6]/30"
+                          >
+                            <Plus className="size-3 mr-1" /> Add
+                          </Button>
+                        </form>
+                      </CardContent>
+                    </Card>
                   </div>
-                  <div>
-                    <p className="text-xs font-medium text-gray-500 uppercase">Embassy</p>
-                    <p className="text-sm font-mono text-gray-700">{plan?.emergency_contacts?.embassy || "National Helpline 1363"}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-medium text-gray-500 uppercase">Hotel</p>
-                    <p className="text-sm font-mono text-gray-700">{plan?.emergency_contacts?.hotel || "Hotel Concierge Desk"}</p>
-                  </div>
+
+                  {/* Row 2: Emergency & Safety Directory (Space-efficient, 100% accurate, Prominent Numbers) */}
+                  <Card className="border border-rose-200 bg-gradient-to-r from-rose-50/40 via-white to-orange-50/20 shadow-xs">
+                    <CardHeader className="py-2.5 px-4 sm:px-6 border-b border-rose-100">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                        <div className="flex items-center gap-2">
+                          <div className="size-7 rounded-full bg-rose-100 flex items-center justify-center text-rose-600 shrink-0">
+                            <PhoneCall className="size-3.5" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <CardTitle className="text-sm sm:text-base font-bold text-rose-950">
+                                Emergency & Safety Directory
+                              </CardTitle>
+                              <Badge variant="outline" className="text-[10px] bg-white border-rose-200 text-rose-800 font-semibold px-2 py-0">
+                                📍 {currentProfile.country}
+                              </Badge>
+                            </div>
+                            <p className="text-[11px] text-rose-800/80">
+                              {plan?.emergency_contacts?.advisory || currentProfile.emergency.advisory}
+                            </p>
+                          </div>
+                        </div>
+                        <Badge className="bg-rose-600 text-white self-start sm:self-auto text-[10px] px-2.5 py-0.5">
+                          24/7 Rapid Response
+                        </Badge>
+                      </div>
+                    </CardHeader>
+
+                    <CardContent className="p-3 sm:p-4">
+                      {/* 4-Column Contact Cards with Bold, Fully-Visible Numbers */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                        {/* Police & Emergency */}
+                        <div className="p-3 rounded-xl bg-white border border-rose-200 shadow-2xs hover:border-rose-300 transition-all flex flex-col justify-between gap-1.5">
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="text-[10px] font-bold text-rose-800 uppercase tracking-wider">
+                              Police & Emergency
+                            </span>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <a
+                                href={`tel:${getDialableNumber(parsedLocal.num, currentProfile.emergency.quick_dial || "112")}`}
+                                className="py-0.5 px-2 bg-rose-600 hover:bg-rose-700 text-white rounded-md text-[11px] font-semibold flex items-center gap-1 transition-colors"
+                                title="Call Police / Emergency"
+                              >
+                                <PhoneCall className="size-3" />
+                                Call
+                              </a>
+                              <button
+                                type="button"
+                                onClick={() => copyToClipboard("local", parsedLocal.num)}
+                                className="p-1 rounded-md border border-gray-200 text-gray-500 hover:bg-gray-100 text-xs transition-colors"
+                                title="Copy number"
+                              >
+                                {copiedContact === "local" ? <Check className="size-3 text-green-600" /> : <Copy className="size-3" />}
+                              </button>
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-xl sm:text-2xl font-black font-mono tracking-tight text-gray-950 select-all leading-tight break-words py-0.5">
+                              {parsedLocal.num}
+                            </div>
+                            <p className="text-[10px] text-gray-500 line-clamp-1">
+                              {parsedLocal.sub || "Police / Urgent Dispatch"}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Medical & Ambulance */}
+                        <div className="p-3 rounded-xl bg-white border border-emerald-200 shadow-2xs hover:border-emerald-300 transition-all flex flex-col justify-between gap-1.5">
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider">
+                              Medical & Ambulance
+                            </span>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <a
+                                href={`tel:${getDialableNumber(parsedAmbulance.num, "112")}`}
+                                className="py-0.5 px-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-[11px] font-semibold flex items-center gap-1 transition-colors"
+                                title="Call Ambulance"
+                              >
+                                <PhoneCall className="size-3" />
+                                Call
+                              </a>
+                              <button
+                                type="button"
+                                onClick={() => copyToClipboard("ambulance", parsedAmbulance.num)}
+                                className="p-1 rounded-md border border-gray-200 text-gray-500 hover:bg-gray-100 text-xs transition-colors"
+                                title="Copy number"
+                              >
+                                {copiedContact === "ambulance" ? <Check className="size-3 text-green-600" /> : <Copy className="size-3" />}
+                              </button>
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-xl sm:text-2xl font-black font-mono tracking-tight text-gray-950 select-all leading-tight break-words py-0.5">
+                              {parsedAmbulance.num}
+                            </div>
+                            <p className="text-[10px] text-gray-500 line-clamp-1">
+                              {parsedAmbulance.sub || "Emergency Medical Care"}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Tourist Helpline */}
+                        <div className="p-3 rounded-xl bg-white border border-blue-200 shadow-2xs hover:border-blue-300 transition-all flex flex-col justify-between gap-1.5">
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="text-[10px] font-bold text-blue-800 uppercase tracking-wider">
+                              Tourist Helpline
+                            </span>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <a
+                                href={`tel:${getDialableNumber(parsedTourist.num, "112")}`}
+                                className="py-0.5 px-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-[11px] font-semibold flex items-center gap-1 transition-colors"
+                                title="Call Tourist Helpline"
+                              >
+                                <PhoneCall className="size-3" />
+                                Call
+                              </a>
+                              <button
+                                type="button"
+                                onClick={() => copyToClipboard("tourist", parsedTourist.num)}
+                                className="p-1 rounded-md border border-gray-200 text-gray-500 hover:bg-gray-100 text-xs transition-colors"
+                                title="Copy number"
+                              >
+                                {copiedContact === "tourist" ? <Check className="size-3 text-green-600" /> : <Copy className="size-3" />}
+                              </button>
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-base sm:text-lg font-black font-mono tracking-tight text-gray-950 select-all leading-tight break-words py-0.5">
+                              {parsedTourist.num}
+                            </div>
+                            <p className="text-[10px] text-gray-500 line-clamp-1">
+                              {parsedTourist.sub || "Visitor & Consular Support"}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Stay & Concierge */}
+                        <div className="p-3 rounded-xl bg-white border border-[#8E9C78]/50 shadow-2xs hover:border-[#8E9C78] transition-all flex flex-col justify-between gap-1.5">
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="text-[10px] font-bold text-[#303f0b] uppercase tracking-wider">
+                              Stay & Concierge
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => copyToClipboard("hotel", `${plan?.emergency_contacts?.hotel || "Hotel Front Desk"} | ${plan?.emergency_contacts?.roamly_support || currentProfile.emergency.roamly_support}`)}
+                              className="py-0.5 px-2 bg-[#485C11] hover:bg-[#3a4d0d] text-white rounded-md text-[11px] font-semibold flex items-center gap-1 transition-colors"
+                              title="Copy Stay Information"
+                            >
+                              {copiedContact === "hotel" ? <Check className="size-3 text-white" /> : <Copy className="size-3" />}
+                              Copy
+                            </button>
+                          </div>
+                          <div>
+                            <div className="text-sm sm:text-base font-bold text-gray-950 select-all leading-tight">
+                              {plan?.emergency_contacts?.hotel || "Hotel Front Desk"}
+                            </div>
+                            <p className="text-[10px] text-gray-500 mt-0.5 line-clamp-1 font-mono">
+                              {plan?.emergency_contacts?.roamly_support || currentProfile.emergency.roamly_support}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
                 </div>
-              </CardContent>
-            </Card>
+              );
+            })()}
 
             {/* Grounding Diagnostic Panel (collapsible) */}
             {agentResult && (
@@ -2271,6 +2987,42 @@ export default function LLMPage() {
                     </p>
                   </CardContent>
                 )}
+              </Card>
+            )}
+
+            {/* Bottom Decision Card when reviewing full plan */}
+            {decisionStatus === 'pending' && (
+              <Card className="border-2 border-[#485C11]/50 bg-gradient-to-r from-[#DFECC6]/40 via-white to-[#DFECC6]/40 shadow-lg ring-2 ring-[#485C11]/20 animate-in fade-in-0 duration-300">
+                <CardContent className="p-6">
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="size-5 text-[#485C11]" />
+                        <h4 className="font-bold text-base text-[#1a1a1a]">Ready to finalize this trip plan?</h4>
+                      </div>
+                      <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                        Accept this itinerary to sync it with your schedule and hotels, or reject to regenerate.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3 w-full sm:w-auto shrink-0">
+                      <Button
+                        onClick={handleAcceptPlan}
+                        className="flex-1 sm:flex-none bg-[#485C11] hover:bg-[#3a4d0d] text-white font-semibold rounded-full px-6 py-2.5 shadow-md transition-all hover:scale-105 text-sm"
+                      >
+                        <Check className="mr-2 size-4" />
+                        Accept Itinerary
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={handleRejectPlan}
+                        className="flex-1 sm:flex-none rounded-full px-5 py-2.5 border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800 font-semibold transition-all text-sm"
+                      >
+                        <X className="mr-2 size-4" />
+                        Reject
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
               </Card>
             )}
           </div>

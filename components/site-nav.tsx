@@ -1,9 +1,10 @@
 "use client"
 
 import { SignedIn, SignedOut, UserButton, useUser, useClerk } from "@clerk/nextjs"
-import { Sparkles, Menu, X, CalendarDays, Users, Plane, Compass, MapPin } from "lucide-react"
+import { Sparkles, Menu, X, CalendarDays, Users, Plane, Compass, MapPin, Hotel } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
+import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { useState, useEffect } from "react"
 
@@ -53,6 +54,7 @@ export function SiteNav() {
     : [
         { href: "/llm", label: "AI Travel Planner", icon: Plane },
         { href: "/trip-map", label: "Map", icon: MapPin },
+        { href: "/stays", label: "Stays & Dining", icon: Hotel },
         { href: "/mapcalendar", label: "My Schedule", icon: CalendarDays },
       ]
 
@@ -61,14 +63,16 @@ export function SiteNav() {
       <header className="sticky top-0 z-40 border-b border-[#e5e7db]/60 bg-[#FAFBF8]/90 backdrop-blur-md">
         <div className="w-full flex h-16 items-center justify-between px-6 sm:px-10 lg:px-16">
 
-          {/* Logo matching the reference image */}
-          <Link href="/" className="flex items-center gap-2.5 group shrink-0" onClick={closeMobile}>
-            <span className="inline-flex size-9 items-center justify-center rounded-xl bg-[#3f520f] text-white shadow-sm transition-transform duration-200 group-hover:scale-105">
-              <Plane className="size-4.5 -rotate-45" />
-            </span>
-            <span className="text-xl font-bold tracking-tight text-[#1a1a1a] font-sans">
-              Roamly
-            </span>
+          {/* Official Roamly Logo */}
+          <Link href="/" className="flex items-center gap-2 group shrink-0" onClick={closeMobile}>
+            <Image
+              src="/logo.png"
+              alt="Roamly - Travel Smarter Together"
+              width={140}
+              height={44}
+              className="h-9 sm:h-10 w-auto object-contain transition-transform duration-200 group-hover:scale-105"
+              priority
+            />
           </Link>
 
           {/* Desktop Navigation Links matching the reference */}
@@ -84,20 +88,21 @@ export function SiteNav() {
               </>
             ) : (
               <>
-                <Link className="hover:text-[#3f520f] transition-colors duration-150" href="/llm">
+                <Link className={`hover:text-[#3f520f] transition-colors duration-150 ${pathname === '/llm' ? 'text-[#3f520f] font-semibold' : ''}`} href="/llm">
                   Trips
                 </Link>
-                <Link className="hover:text-[#3f520f] transition-colors duration-150 flex items-center gap-1 font-semibold text-[#3f520f]" href="/trip-map">
+                <Link className={`hover:text-[#3f520f] transition-colors duration-150 flex items-center gap-1 ${pathname === '/trip-map' ? 'text-[#3f520f] font-semibold' : ''}`} href="/trip-map">
                   <MapPin className="size-3.5" />
                   Map
                 </Link>
-                <Link className="hover:text-[#3f520f] transition-colors duration-150" href="/guides">
-                  Local Guides
-                </Link>
-                <Link className="hover:text-[#3f520f] transition-colors duration-150" href="/#itinerary-widget">
+                <Link className={`hover:text-[#3f520f] transition-colors duration-150 flex items-center gap-1 ${pathname === '/stays' ? 'text-[#3f520f] font-semibold' : ''}`} href="/stays">
+                  <Hotel className="size-3.5" />
                   Stays
                 </Link>
-                <Link className="hover:text-[#3f520f] transition-colors duration-150" href="/mapcalendar">
+                <Link className={`hover:text-[#3f520f] transition-colors duration-150 ${pathname === '/guides' ? 'text-[#3f520f] font-semibold' : ''}`} href="/guides">
+                  Local Guides
+                </Link>
+                <Link className={`hover:text-[#3f520f] transition-colors duration-150 ${pathname === '/mapcalendar' ? 'text-[#3f520f] font-semibold' : ''}`} href="/mapcalendar">
                   My Schedule
                 </Link>
               </>
@@ -206,8 +211,8 @@ export function SiteNav() {
             <SignedOut>
               <Link href="/llm" onClick={closeMobile} className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-[#e5e7db]/40 transition-all duration-200">Trips</Link>
               <Link href="/trip-map" onClick={closeMobile} className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium text-[#3f520f] font-semibold hover:bg-[#e5e7db]/40 transition-all duration-200">Map</Link>
+              <Link href="/stays" onClick={closeMobile} className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium text-[#3f520f] font-semibold hover:bg-[#e5e7db]/40 transition-all duration-200">Stays & Dining</Link>
               <Link href="/guides" onClick={closeMobile} className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-[#e5e7db]/40 transition-all duration-200">Local Guides</Link>
-              <Link href="/#itinerary-widget" onClick={closeMobile} className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-[#e5e7db]/40 transition-all duration-200">Preview</Link>
               <Link href="/#comparison" onClick={closeMobile} className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-[#e5e7db]/40 transition-all duration-200">Why Roamly</Link>
             </SignedOut>
           </div>

@@ -259,6 +259,9 @@ function buildSuccessResponse(context, reOptimizations, persistResult) {
     budgetBreakdown: context.budgetAllocations.categories,
     destinations: plan.destinations,
     days: plan.days,
+    travel_tips: plan.travel_tips || [],
+    packing_list: plan.packing_list || [],
+    emergency_contacts: plan.emergency_contacts || null,
     sources: context.sources,
     routerTrace: {
       agentsExecuted: collectAgentsExecuted(context),
